@@ -1,0 +1,141 @@
+{
+    "2026-09-11": {
+        "Dataset Summary": {
+            "Total Rows": 3500,
+            "Total Columns": 7
+        },
+        "Quality Checks": {
+            "Total Missing Values": 0,
+            "Duplicate Rows": 0,
+            "Rows with All Missing Values": 0
+        },
+        "Columns Health": {
+            "Columns": [
+                "Order Date",
+                "Product Name",
+                "Category",
+                "Region",
+                "Quantity",
+                "Sales",
+                "Profit"
+            ],
+            "Columns with Missing Values": [],
+            "Column Details": [
+                {
+                    "Column": "Order Date",
+                    "Missing": 0,
+                    "Unique": 1051,
+                    "Type": "datetime64[us]",
+                    "Missing Percentage": 0.0
+                },
+                {
+                    "Column": "Product Name",
+                    "Missing": 0,
+                    "Unique": 10,
+                    "Type": "str",
+                    "Missing Percentage": 0.0
+                },
+                {
+                    "Column": "Category",
+                    "Missing": 0,
+                    "Unique": 3,
+                    "Type": "str",
+                    "Missing Percentage": 0.0
+                },
+                {
+                    "Column": "Region",
+                    "Missing": 0,
+                    "Unique": 4,
+                    "Type": "str",
+                    "Missing Percentage": 0.0
+                },
+                {
+                    "Column": "Quantity",
+                    "Missing": 0,
+                    "Unique": 9,
+                    "Type": "int64",
+                    "Missing Percentage": 0.0
+                },
+                {
+                    "Column": "Sales",
+                    "Missing": 0,
+                    "Unique": 2377,
+                    "Type": "int64",
+                    "Missing Percentage": 0.0
+                },
+                {
+                    "Column": "Profit",
+                    "Missing": 0,
+                    "Unique": 3447,
+                    "Type": "float64",
+                    "Missing Percentage": 0.0
+                }
+            ]
+        },
+        "Numeric Column Statistics": {
+            "Columns": [
+                "Quantity",
+                "Sales",
+                "Profit"
+            ],
+            "Column Details": [
+                {
+                    "Column": "Quantity",
+                    "Mean": 4.9317142857142855,
+                    "Median": 5.0,
+                    "Standard Deviation": 2.575894571219191,
+                    "Min": 1.0,
+                    "Max": 9.0
+                },
+                {
+                    "Column": "Sales",
+                    "Mean": 3047.966,
+                    "Median": 2350.5,
+                    "Standard Deviation": 2440.21323714587,
+                    "Min": 51.0,
+                    "Max": 10782.0
+                },
+                {
+                    "Column": "Profit",
+                    "Mean": 527.0472028571428,
+                    "Median": 361.07,
+                    "Standard Deviation": 504.13973150404496,
+                    "Min": 6.97,
+                    "Max": 2946.93
+                }
+            ]
+        },
+        "Issues Detected": {
+            "Missing Values Detected": false,
+            "Duplicate Rows Detected": false,
+            "Rows with All Missing Values Detected": false
+        },
+        "Other Details": {
+            "Unique Product Names": [
+                "Printer",
+                "Mouse",
+                "Tablet",
+                "Camera",
+                "Headphones",
+                "Smartwatch",
+                "Monitor",
+                "Smartphone",
+                "Keyboard",
+                "Laptop"
+            ],
+            "Unique Categories": [
+                "Office",
+                "Accessories",
+                "Electronics"
+            ],
+            "Unique Regions": [
+                "North",
+                "East",
+                "South",
+                "West"
+            ],
+            "Earliest Date": "2022-01-01",
+            "Latest Date": "2024-12-31"
+        }
+    }
+}
