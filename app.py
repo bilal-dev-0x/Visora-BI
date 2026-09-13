@@ -1,171 +1,361 @@
 import json
 from pathlib import Path
-from datetime import date, time
+from datetime import date
 import datetime
 
+import sqlite3
 import pandas as pd
 
-
-# ==============================
-# Configuration
-# ==============================
 
 DATA_FILE = "data/sales_data.csv"
 REPORT_FILE = "reports/sales_summary.json"
 TEXT_FILE = "reports/"
 
 
-# ==============================
-# Load Dataset
-# ==============================
+class DataAnalyzer:
 
-df = pd.read_csv(DATA_FILE)
+    def __init__(self, data_file):
+        self.data_file = data_file
+        self.df = None
 
-df["Order Date"] = pd.to_datetime(df["Order Date"])
+        self.columns = []
+        self.numeric_columns = []
 
+        self.total_missing_values = 0
+        self.columns_with_missing_values = []
+        self.duplicate_rows = 0
+        self.completely_empty_rows = 0
 
-# ==============================
-# Basic Dataset Information
-# ==============================
+        self.product_names = []
+        self.categories = []
+        self.regions = []
 
-columns = df.columns.tolist()
-numeric_columns = df.select_dtypes(include=["number"]).columns.tolist()
+        self.earliest_date = None
+        self.latest_date = None
 
+        self.summary = {}
 
-# ==============================
-# Quality Checks
-# ==============================
+        self.cleaned_df = None
 
-total_missing_values = int(df.isnull().sum().sum())
-columns_with_missing_values = df.columns[df.isnull().any()].tolist()
+    def load_data(self):
+        self.df = pd.read_csv(self.data_file)
+        self.df["Order Date"] = pd.to_datetime(
+            self.df["Order Date"]
+        )
 
-duplicate_rows = int(df.duplicated().sum())
-completely_empty_rows = int(df.isnull().all(axis=1).sum())
+    def get_basic_information(self):
+        self.columns = self.df.columns.tolist()
 
+        self.numeric_columns = (
+            self.df
+            .select_dtypes(include=["number"])
+            .columns
+            .tolist()
+        )
 
-# ==============================
-# Column Health
-# ==============================
+    def get_quality_checks(self):
+        self.total_missing_values = int(
+            self.df.isnull().sum().sum()
+        )
 
-def get_column_health(df):
-    column_details = []
+        self.columns_with_missing_values = (
+            self.df.columns[
+                self.df.isnull().any()
+            ].tolist()
+        )
 
-    for column in df.columns:
-        missing_count = int(df[column].isnull().sum())
-        unique_count = int(df[column].nunique())
+        self.duplicate_rows = int(
+            self.df.duplicated().sum()
+        )
 
-        column_details.append({
-            "Column": column,
-            "Missing": missing_count,
-            "Unique": unique_count,
-            "Type": str(df[column].dtype),
-            "Missing Percentage": round(
-                (missing_count / len(df)) * 100,
-                2
+        self.completely_empty_rows = int(
+            self.df.isnull().all(axis=1).sum()
+        )
+
+    def get_column_health(self):
+        column_details = []
+
+        for column in self.df.columns:
+            missing_count = int(
+                self.df[column].isnull().sum()
             )
-        })
 
-    return column_details
-
-
-# ==============================
-# Numeric Statistics
-# ==============================
-
-def get_numeric_statistics(df, numeric_columns):
-    numeric_details = []
-
-    for column in numeric_columns:
-        numeric_details.append({
-            "Column": column,
-            "Mean": float(df[column].mean()),
-            "Median": float(df[column].median()),
-            "Standard Deviation": float(df[column].std()),
-            "Min": float(df[column].min()),
-            "Max": float(df[column].max())
-        })
-
-    return numeric_details
-
-
-# ==============================
-# Other Dataset Details
-# ==============================
-
-product_names = df["Product Name"].dropna().unique().tolist()
-categories = df["Category"].dropna().unique().tolist()
-regions = df["Region"].dropna().unique().tolist()
-
-earliest_date = str(df["Order Date"].min().date())
-latest_date = str(df["Order Date"].max().date())
-
-
-# ==============================
-# Build Health Report
-# ==============================
-
-summary = {
-    date.today().isoformat(): {
-        "Dataset Summary": {
-            "Total Rows": int(len(df)),
-            "Total Columns": int(len(df.columns))
-        },
-
-        "Quality Checks": {
-            "Total Missing Values": total_missing_values,
-            "Duplicate Rows": duplicate_rows,
-            "Rows with All Missing Values": completely_empty_rows
-        },
-
-        "Columns Health": {
-            "Columns": columns,
-            "Columns with Missing Values": columns_with_missing_values,
-            "Column Details": get_column_health(df)
-        },
-
-        "Numeric Column Statistics": {
-            "Columns": numeric_columns,
-            "Column Details": get_numeric_statistics(
-                df,
-                numeric_columns
+            unique_count = int(
+                self.df[column].nunique()
             )
-        },
 
-        "Issues Detected": {
-            "Missing Values Detected": total_missing_values > 0,
-            "Duplicate Rows Detected": duplicate_rows > 0,
-            "Rows with All Missing Values Detected": completely_empty_rows > 0
-        },
+            column_details.append({
+                "Column": column,
+                "Missing": missing_count,
+                "Unique": unique_count,
+                "Type": str(self.df[column].dtype),
+                "Missing Percentage": round(
+                    (missing_count / len(self.df)) * 100,
+                    2
+                )
+            })
+        return column_details
 
-        "Other Details": {
-            "Unique Product Names": product_names,
-            "Unique Categories": categories,
-            "Unique Regions": regions,
-            "Earliest Date": earliest_date,
-            "Latest Date": latest_date
-        }}
-}
+    def get_numeric_statistics(self):
+        numeric_details = []
 
+        for column in self.numeric_columns:
+            numeric_details.append({
+                "Column": column,
+                "Mean": float(
+                    self.df[column].mean()
+                ),
+                "Median": float(
+                    self.df[column].median()
+                ),
+                "Standard Deviation": float(
+                    self.df[column].std()
+                ),
+                "Min": float(
+                    self.df[column].min()
+                ),
+                "Max": float(
+                    self.df[column].max()
+                )
+            })
 
-# ==============================
-# Export Report
-# ==============================
+        return numeric_details
 
-report_path = Path(REPORT_FILE)
-report_path.parent.mkdir(parents=True, exist_ok=True)
+    def get_other_details(self):
+        self.product_names = (
+            self.df["Product Name"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
 
-tnd = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-text_file_path = Path(TEXT_FILE) / f"sales_summary-{tnd}.txt"
-text_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.categories = (
+            self.df["Category"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
 
-with open(report_path, "w", encoding="utf-8") as file:
-    json.dump(summary, file, indent=4)
+        self.regions = (
+            self.df["Region"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
 
-with open(report_path, "r", encoding="utf-8") as file:
-    loaded_summary = json.load(file)
+        self.earliest_date = str(
+            self.df["Order Date"].min().date()
+        )
 
-with open(text_file_path, "w", encoding="utf-8") as file:
-    file.write(json.dumps(loaded_summary, indent=4))
+        self.latest_date = str(
+            self.df["Order Date"].max().date()
+        )
 
-print(f"\nHealth report generated successfully:")
-print(report_path)
+    def build_report(self):
+        self.summary = {
+            date.today().isoformat(): {
+                "Dataset Summary": {
+                    "Total Rows": int(len(self.df)),
+                    "Total Columns": int(len(self.df.columns))
+                },
+
+                "Quality Checks": {
+                    "Total Missing Values":
+                        self.total_missing_values,
+                    "Duplicate Rows":
+                        self.duplicate_rows,
+                    "Rows with All Missing Values":
+                        self.completely_empty_rows
+                },
+
+                "Columns Health": {
+                    "Columns": self.columns,
+                    "Columns with Missing Values":
+                        self.columns_with_missing_values,
+                    "Column Details":
+                        self.get_column_health()
+                },
+
+                "Numeric Column Statistics": {
+                    "Columns": self.numeric_columns,
+                    "Column Details":
+                        self.get_numeric_statistics()
+                },
+
+                "Issues Detected": {
+                    "Missing Values Detected":
+                        self.total_missing_values > 0,
+                    "Duplicate Rows Detected":
+                        self.duplicate_rows > 0,
+                    "Rows with All Missing Values Detected":
+                        self.completely_empty_rows > 0
+                },
+
+                "Other Details": {
+                    "Unique Product Names":
+                        self.product_names,
+                    "Unique Categories":
+                        self.categories,
+                    "Unique Regions":
+                        self.regions,
+                    "Earliest Date":
+                        self.earliest_date,
+                    "Latest Date":
+                        self.latest_date
+                }
+            }
+        }
+
+    def export_report(self):
+        report_path = Path(REPORT_FILE)
+        report_path.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        timestamp = datetime.datetime.now().strftime(
+            "%Y-%m-%d_%H-%M-%S"
+        )
+
+        text_file_path = (
+            Path(TEXT_FILE)
+            / f"sales_summary-{timestamp}.txt"
+        )
+
+        text_file_path.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        with open(
+            report_path,
+            "w",
+            encoding="utf-8"
+        ) as file:
+            json.dump(
+                self.summary,
+                file,
+                indent=4
+            )
+
+        with open(
+            report_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+            loaded_summary = json.load(file)
+
+        with open(
+            text_file_path,
+            "w",
+            encoding="utf-8"
+        ) as file:
+            file.write(
+                json.dumps(
+                    loaded_summary,
+                    indent=4
+                )
+            )
+
+        print("\nHealth report generated successfully:")
+        print(report_path)
+
+    def clean_data(self):
+        df = self.df.copy()
+
+        for column in df.columns:
+            if df[column].isnull().any():
+
+                if pd.api.types.is_numeric_dtype(df[column]):
+                    df[column] = df[column].fillna(
+                        df[column].median()
+                    )
+
+                elif pd.api.types.is_datetime64_any_dtype(df[column]):
+                    df = df.dropna(subset=[column])
+
+                else:
+                    df[column] = df[column].fillna("Unknown")
+        self.cleaned_df = df
+
+class DataSetManager:
+    def __init__(self, db_file):
+        self.db_file = db_file
+        self.conn = None
+
+    def connect(self):
+        self.conn = sqlite3.connect(self.db_file)
+
+    def create_tables(self, df):
+        cursor = self.conn.cursor()
+        columns = []
+
+        for column in df.columns:
+            dtype = str(df[column].dtype)
+            if "int" in dtype:
+                sql_type = "INTEGER"
+            elif "float" in dtype:
+                sql_type = "REAL"
+            else:
+                sql_type = "TEXT"
+
+            column_definition = f'"{column}" {sql_type}'
+            columns.append(column_definition)
+
+        columns_sql = ", ".join(columns)
+        sql_createtable_query = f"""CREATE TABLE IF NOT EXISTS sales(
+                                    {columns_sql}
+                                    )"""
+
+        cursor.execute(sql_createtable_query)
+        self.conn.commit()
+
+    def insert_data(self, df):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM sales")
+        self.conn.commit()
+
+        df.to_sql(
+            "sales",
+            self.conn,
+            if_exists="append",
+            index=False
+        )
+
+    def get_data(self):
+        query = "SELECT * FROM sales"
+        return pd.read_sql_query(query, self.conn)
+
+    def get_table_info(self):
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(sales)")
+        return cursor.fetchall()
+
+analyzer = DataAnalyzer(DATA_FILE)
+
+analyzer.load_data()
+analyzer.get_basic_information()
+analyzer.get_quality_checks()
+analyzer.get_other_details()
+analyzer.build_report()
+analyzer.export_report()
+analyzer.clean_data()
+
+database = DataSetManager("data/visora.db")
+database.connect()
+database.create_tables(analyzer.cleaned_df)
+database.insert_data(analyzer.cleaned_df)
+
+database.insert_data(analyzer.cleaned_df)
+
+db_df = database.get_data()
+
+print("\nDatabase data:")
+print(db_df.head())
+
+print("\nDatabase rows:", len(db_df))
+print("Cleaned rows:", len(analyzer.cleaned_df))
+
+print("\nDatabase schema:")
+for column in database.get_table_info():
+    print(column)
