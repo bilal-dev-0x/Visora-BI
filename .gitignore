@@ -1,9 +1,27 @@
-@"
-.venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment variables
 .env
-*.env
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated reports
+reports/*.json
+
+# IDE
 .vscode/
-"@ | Out-File -Encoding utf8 .gitignore
-.txt
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

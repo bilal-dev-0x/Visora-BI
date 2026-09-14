@@ -331,6 +331,109 @@ class DataSetManager:
         cursor.execute("PRAGMA table_info(sales)")
         return cursor.fetchall()
 
+class MetricsEngine:
+
+    def __init__(self, db_file):
+        self.db_file = db_file
+        self.conn = None
+
+    def connect(self):
+        self.conn = sqlite3.connect(self.db_file)
+
+    def get_sum(self, column):
+        query = f'SELECT SUM("{column}") FROM sales'
+        cursor = self.conn.cursor()
+        cursor.execute(query)
+        result = cursor.fetchone()
+        return result[0]
+
+    def get_average(self, column):
+        query = f'SELECT AVG("{column}") FROM sales'
+        cursor = self.conn.cursor()
+        cursor.execute(query)
+        result = cursor.fetchone()
+        return result[0]
+
+    def get_grouped_metric(self, group_column, metric_column, aggregation):
+
+        allowed_aggregations = ["SUM", "AVG", "MIN", "MAX", "COUNT"]
+
+        if aggregation not in allowed_aggregations:
+            raise ValueError("Unsupported aggregation")
+
+        query = f'''
+            SELECT "{group_column}", {aggregation}("{metric_column}")
+            FROM sales
+            GROUP BY "{group_column}"
+        '''
+
+        cursor = self.conn.cursor()
+        cursor.execute(query)
+
+        return cursor.fetchall()
+
+class TrendEngine:
+    def __init__(self, db_file):
+        self.db_file = db_file
+        self.conn = None
+
+    def connect(self):
+        self.conn = sqlite3.connect(self.db_file)
+
+    def get_monthly_metrics(self):
+        query = '''
+            SELECT
+                strftime('%Y-%m', "Order Date") AS month,
+                SUM("Sales") AS total_sales,
+                SUM("Profit") AS total_profit
+            FROM sales
+            GROUP BY month
+            ORDER BY month
+        '''
+
+        cursor = self.conn.cursor()
+        cursor.execute(query)
+
+        return cursor.fetchall()
+
+    def calculate_growth(self, monthly_data):
+        growth_data = []
+        previous_sales = None
+
+        for month, sales, profit in monthly_data:
+            if previous_sales is None:
+                growth = None
+            else:
+                growth = round(((sales - previous_sales) / previous_sales) * 100, 2)
+
+            growth_data.append((month, sales, profit, growth))
+            previous_sales = sales
+
+        return growth_data
+
+    def calculate_moving_average(self, monthly_data, window=3):
+        moving_data = []
+        sales_window = []
+
+        for month, sales, profit in monthly_data:
+            sales_window.append(sales)
+
+            if len(sales_window) < window:
+                moving_average = None
+            else:
+                moving_average = round(
+                    sum(sales_window) / window,
+                    2
+                )
+
+                sales_window.pop(0)
+
+            moving_data.append(
+                (month, sales, moving_average)
+            )
+
+        return moving_data
+
 analyzer = DataAnalyzer(DATA_FILE)
 
 analyzer.load_data()
@@ -357,5 +460,44 @@ print("\nDatabase rows:", len(db_df))
 print("Cleaned rows:", len(analyzer.cleaned_df))
 
 print("\nDatabase schema:")
-for column in database.get_table_info():
-    print(column)
+for column in database.get_table_info(): print(column)
+
+metrics = MetricsEngine("data/visora.db")
+metrics.connect()
+
+total_sales = metrics.get_sum("Sales")
+
+print("\nTotal Sales:", total_sales)
+
+average_profit = metrics.get_average("Profit")
+
+print("Average Profit:", average_profit)
+
+group_by = metrics.get_grouped_metric(
+    "Category",
+    "Sales",
+    "SUM"
+)
+
+print(group_by)
+
+trends = TrendEngine("data/visora.db")
+trends.connect()
+
+monthly_data = trends.get_monthly_metrics()
+
+print("\nMonthly Metrics:")
+
+for row in monthly_data: print(row)
+
+growth_monthly = trends.calculate_growth(monthly_data)
+
+print("\nMonthly Growth:")
+for growth in growth_monthly: print(growth[0], "--->", growth[3])
+
+moving_data = trends.calculate_moving_average(monthly_data)
+
+print("\nMoving Average:")
+
+for row in moving_data:
+    print(row)
