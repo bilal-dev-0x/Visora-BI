@@ -43,12 +43,17 @@ class DataAnalyzer:
         for column in self.df.columns:
             missing_count = int(self.df[column].isnull().sum())
             unique_count = int(self.df[column].nunique())
+            missing_percentage = (
+                round((missing_count / len(self.df)) * 100, 2)
+                if len(self.df) > 0
+                else 0
+            )
             column_details.append({
                 "Column": column,
                 "Missing": missing_count,
                 "Unique": unique_count,
                 "Type": str(self.df[column].dtype),
-                "Missing Percentage": round((missing_count / len(self.df)) * 100, 2)
+                "Missing Percentage": missing_percentage
             })
         return column_details
 
@@ -64,6 +69,33 @@ class DataAnalyzer:
                 "Max": float(self.df[column].max())
             })
         return numeric_details
+
+    def get_categorical_distributions(self, top_n=10):
+        distributions = {}
+        for column in self.categorical_columns:
+            category_counts = (
+                self.df[column]
+                .fillna("Missing")
+                .astype(str)
+                .value_counts()
+            )
+            distribution = [
+                {
+                    "Category": category,
+                    "Frequency": int(frequency)
+                }
+                for category, frequency in category_counts.head(top_n).items()
+            ]
+
+            if len(category_counts) > top_n:
+                distribution.append({
+                    "Category": "Other categories",
+                    "Frequency": int(category_counts.iloc[top_n:].sum())
+                })
+
+            distributions[column] = distribution
+
+        return distributions
 
     def get_other_details(self):
         self.date_columns = self.df.select_dtypes(
