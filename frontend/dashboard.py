@@ -10,6 +10,8 @@ import pandas as pd
 from components.upload import upload_csv
 from backend.analyzer import DataAnalyzer
 from backend.insights import generate_insights
+from backend.dataset_registry import DatasetRegistry
+from backend.ingestion import DatasetIngestor
 
 st.set_page_config(
     page_title="Visora BI",
@@ -17,15 +19,83 @@ st.set_page_config(
     layout="wide"
 )
 
+
+@st.cache_resource
+def get_registry():
+    registry = DatasetRegistry()
+    registry.connect()
+    return registry
+
+
+@st.cache_resource
+def get_ingestor():
+    ingestor = DatasetIngestor()
+    ingestor.connect()
+    return ingestor
+
+
+registry = get_registry()
+ingestor = get_ingestor()
+
 st.title("Visora BI")
+
 uploaded_file = upload_csv()
-analyzer = None
+
 if uploaded_file is not None:
-    analyzer = DataAnalyzer(uploaded_file)
+    # Persist the upload (Checkpoint 1) and load it into its own SQLite
+    # table (Checkpoint 2) so it's available to the analytical engines
+    # and survives across reruns/restarts, instead of living only in the
+    # Streamlit upload buffer.
+    dataset_id = registry.register_upload(uploaded_file.name, uploaded_file)
+    dataset = registry.get_dataset(dataset_id)
+    ingest_result = ingestor.ingest_csv(dataset["stored_path"], dataset["table_name"])
+    registry.update_counts(dataset_id, ingest_result["row_count"], ingest_result["column_count"])
+    if not ingest_result["ingested"]:
+        st.warning(
+            f"'{dataset['original_filename']}' was saved, but couldn't be loaded for "
+            f"further analysis: {ingest_result['reason']}"
+        )
+    st.session_state["selected_dataset_id"] = dataset_id
+
+st.sidebar.subheader("Dataset History")
+datasets = registry.list_datasets()
+
+selected_dataset_id = None
+if datasets:
+    dataset_ids = [entry["dataset_id"] for entry in datasets]
+    dataset_labels = {
+        entry["dataset_id"]: (
+            f'{entry["original_filename"]} '
+            f'({entry["created_at"][:19].replace("T", " ")})'
+        )
+        for entry in datasets
+    }
+    remembered_id = st.session_state.get("selected_dataset_id")
+    default_index = dataset_ids.index(remembered_id) if remembered_id in dataset_ids else 0
+    selected_dataset_id = st.sidebar.selectbox(
+        "Load a previous dataset",
+        dataset_ids,
+        index=default_index,
+        format_func=lambda dataset_id: dataset_labels.get(dataset_id, dataset_id),
+        key="dataset_history_select"
+    )
+    st.session_state["selected_dataset_id"] = selected_dataset_id
+else:
+    st.sidebar.info("No datasets yet. Upload a CSV to get started.")
+
+analyzer = None
+selected_dataset = None
+if selected_dataset_id:
+    # Selecting a dataset from history loads it straight from persisted
+    # local storage -- no re-upload required.
+    selected_dataset = registry.get_dataset(selected_dataset_id)
+    analyzer = DataAnalyzer(selected_dataset["stored_path"])
     analyzer.load_data()
     analyzer.get_basic_information()
     analyzer.get_quality_checks()
     analyzer.get_other_details()
+    st.sidebar.caption(f"Analyzing: {selected_dataset['original_filename']}")
+
 st.caption("Turn messy business data into clear decisions.")
 
 st.divider()
@@ -35,25 +105,25 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric(
         "Rows",
-        len(analyzer.df) if uploaded_file is not None else "—"
+        len(analyzer.df) if analyzer is not None else "—"
     )
 
 with col2:
     st.metric(
         "Columns",
-        len(analyzer.columns) if uploaded_file is not None else "—"
+        len(analyzer.columns) if analyzer is not None else "—"
     )
 
 with col3:
     st.metric(
         "Missing Values",
-        analyzer.total_missing_values if uploaded_file is not None else "—"
+        analyzer.total_missing_values if analyzer is not None else "—"
     )
 
 with col4:
     st.metric(
         "Duplicate Rows",
-        analyzer.duplicate_rows if uploaded_file is not None else "—"
+        analyzer.duplicate_rows if analyzer is not None else "—"
     )
 
 st.divider()
