@@ -1,3 +1,4 @@
+import hashlib
 import sys
 from pathlib import Path
 
@@ -46,42 +47,59 @@ if uploaded_file is not None:
     # table (Checkpoint 2) so it's available to the analytical engines
     # and survives across reruns/restarts, instead of living only in the
     # Streamlit upload buffer.
-    dataset_id = registry.register_upload(uploaded_file.name, uploaded_file)
-    dataset = registry.get_dataset(dataset_id)
-    ingest_result = ingestor.ingest_csv(dataset["stored_path"], dataset["table_name"])
-    registry.update_counts(dataset_id, ingest_result["row_count"], ingest_result["column_count"])
-    if not ingest_result["ingested"]:
-        st.warning(
-            f"'{dataset['original_filename']}' was saved, but couldn't be loaded for "
-            f"further analysis: {ingest_result['reason']}"
-        )
-    st.session_state["selected_dataset_id"] = dataset_id
+    upload_key = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+    if st.session_state.get("processed_upload_key") != upload_key:
+        dataset_id = registry.register_upload(uploaded_file.name, uploaded_file)
+        dataset = registry.get_dataset(dataset_id)
+        ingest_result = ingestor.ingest_csv(dataset["stored_path"], dataset["table_name"])
+        registry.update_counts(dataset_id, ingest_result["row_count"], ingest_result["column_count"])
+        if not ingest_result["ingested"]:
+            st.warning(
+                f"'{dataset['original_filename']}' was saved, but couldn't be loaded for "
+                f"further analysis: {ingest_result['reason']}"
+            )
+        st.session_state["processed_upload_key"] = upload_key
+        st.session_state["selected_dataset_id"] = dataset_id
+        st.session_state["dataset_history_select"] = dataset_id
 
 st.sidebar.subheader("Dataset History")
 datasets = registry.list_datasets()
 
-selected_dataset_id = None
+selected_dataset_id = st.session_state.get("selected_dataset_id")
 if datasets:
-    dataset_ids = [entry["dataset_id"] for entry in datasets]
-    dataset_labels = {
-        entry["dataset_id"]: (
-            f'{entry["original_filename"]} '
-            f'({entry["created_at"][:19].replace("T", " ")})'
-        )
-        for entry in datasets
-    }
-    remembered_id = st.session_state.get("selected_dataset_id")
-    default_index = dataset_ids.index(remembered_id) if remembered_id in dataset_ids else 0
-    selected_dataset_id = st.sidebar.selectbox(
-        "Load a previous dataset",
-        dataset_ids,
-        index=default_index,
-        format_func=lambda dataset_id: dataset_labels.get(dataset_id, dataset_id),
-        key="dataset_history_select"
-    )
-    st.session_state["selected_dataset_id"] = selected_dataset_id
+    dataset_ids = {entry["dataset_id"] for entry in datasets}
+    if selected_dataset_id not in dataset_ids:
+        selected_dataset_id = datasets[0]["dataset_id"]
+        st.session_state["selected_dataset_id"] = selected_dataset_id
+
+    for dataset in datasets:
+        dataset_id = dataset["dataset_id"]
+        if st.sidebar.button(
+            dataset["original_filename"],
+            key=f"dataset_history_{dataset_id}",
+            type="primary" if dataset_id == selected_dataset_id else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state["selected_dataset_id"] = dataset_id
+            st.rerun()
 else:
     st.sidebar.info("No datasets yet. Upload a CSV to get started.")
+
+if st.sidebar.button("Clear History", use_container_width=True):
+    st.session_state["confirm_clear_history"] = True
+
+if st.session_state.get("confirm_clear_history"):
+    st.sidebar.warning("Permanently delete all saved datasets and files?")
+    confirm_col, cancel_col = st.sidebar.columns(2)
+    if confirm_col.button("Confirm", type="primary", use_container_width=True):
+        registry.clear_datasets()
+        st.session_state["selected_dataset_id"] = None
+        st.session_state["processed_upload_key"] = None
+        st.session_state["confirm_clear_history"] = False
+        st.rerun()
+    if cancel_col.button("Cancel", use_container_width=True):
+        st.session_state["confirm_clear_history"] = False
+        st.rerun()
 
 analyzer = None
 selected_dataset = None
@@ -95,6 +113,11 @@ if selected_dataset_id:
     analyzer.get_quality_checks()
     analyzer.get_other_details()
     st.sidebar.caption(f"Analyzing: {selected_dataset['original_filename']}")
+
+if selected_dataset is not None:
+    st.info(f"Analyzing: {selected_dataset['original_filename']}")
+else:
+    st.info("No dataset selected - upload a CSV to begin analysis.")
 
 st.caption("Turn messy business data into clear decisions.")
 

@@ -184,3 +184,23 @@ class DatasetRegistry:
             return None
         columns = [description[0] for description in cursor.description]
         return dict(zip(columns, row))
+
+    def clear_datasets(self):
+        """Remove all registered datasets and their isolated storage.
+        The legacy `sales` table and source CSV are never selected by this
+        registry-owned cleanup operation."""
+        datasets = self.list_datasets()
+        for dataset in datasets:
+            table_name = dataset["table_name"]
+            if table_name.startswith("ds_"):
+                self.conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+
+            stored_path = Path(dataset["stored_path"])
+            try:
+                stored_path.unlink()
+            except FileNotFoundError:
+                pass
+
+        self.conn.execute("DELETE FROM datasets")
+        self.conn.commit()
+        return len(datasets)

@@ -1,27 +1,38 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
 
-# Virtual environment
+# Virtual environments
 .venv/
 venv/
 env/
 
-# Environment variables
+# Environment / secrets
 .env
+.env.*
 
-# SQLite database
+# Local SQLite database
+data/visora.db
 *.db
 *.sqlite
 *.sqlite3
 
+# User-uploaded datasets / local runtime storage
+data/datasets/
+
+# Temporary local test fixtures
+data/ux_test_*.csv
+
 # Generated reports
+reports/*.txt
 reports/*.json
 
-# IDE
-.vscode/
-.idea/
+# Streamlit
+.streamlit/secrets.toml
 
-# OS
+# OS / editor files
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
