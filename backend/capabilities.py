@@ -39,9 +39,12 @@ _NUMERIC_AFFINITIES = ("INTEGER", "REAL")
 
 # A text column is only treated as date-like if this fraction (or more)
 # of its non-null values parse cleanly as dates -- mirrors the ratio
-# DatasetIngestor._try_parse_dates() already uses at ingestion time, so
-# capability detection stays consistent with how the data was actually
-# stored.
+# DatasetIngestor._try_parse_object_dates() already uses at ingestion
+# time, so capability detection stays consistent with how the data was
+# actually stored. (A compact numeric date encoding, e.g. YYYYMMDD, is
+# handled earlier by DatasetIngestor._try_parse_compact_numeric_dates()
+# at ingest time, so by the time capability detection runs, such a
+# column is already stored as TEXT and reaches this same check.)
 _DATE_LIKE_SUCCESS_RATIO = 0.9
 _DATE_SAMPLE_SIZE = 200
 
@@ -115,8 +118,30 @@ class CapabilityDetector:
 
         trend_engine = TrendEngine(self.db_file)
         trend_engine.conn = self.conn
-        trend_supported, trend_reason = trend_engine.check_support(table_name)
-        trends = {"available": trend_supported, "reason": trend_reason}
+        # Prefer the specialized "Order Date"/"Sales" pair when it's
+        # actually present (keeps the exact historical reason text for
+        # datasets that have neither column, e.g. "Missing required
+        # column(s) for trend analysis: Order Date, Sales"). Otherwise
+        # fall back to Day 2's generic detection: any date-like column
+        # paired with any numeric measure -- e.g. "Date" + "Revenue" is
+        # now a valid trend capability even though it isn't the
+        # business-specific "Order Date" + "Sales" combination.
+        legacy_supported, legacy_reason = trend_engine.check_support(table_name)
+        if legacy_supported:
+            trend_date_column, trend_measure_column = "Order Date", "Sales"
+            trend_supported, trend_reason = True, None
+        else:
+            trend_date_column, trend_measure_column = self._best_trend_pair(
+                date_columns, candidate_measures
+            )
+            trend_supported = trend_date_column is not None and trend_measure_column is not None
+            trend_reason = None if trend_supported else legacy_reason
+        trends = {
+            "available": trend_supported,
+            "reason": trend_reason,
+            "date_column": trend_date_column,
+            "measure_column": trend_measure_column,
+        }
 
         dimension, measure = self._best_contribution_pair(
             candidate_dimensions, candidate_measures
@@ -167,7 +192,7 @@ class CapabilityDetector:
             "candidate_measures": [],
             "candidate_dimensions": [],
             "metrics": {"available": False, "reason": reason},
-            "trends": {"available": False, "reason": reason},
+            "trends": {"available": False, "reason": reason, "date_column": None, "measure_column": None},
             "contribution": {"available": False, "reason": reason, "dimension": None, "measure": None},
             "anomaly": {"available": False, "reason": reason},
         }
@@ -219,3 +244,12 @@ class CapabilityDetector:
         if not candidate_dimensions or not candidate_measures:
             return None, None
         return candidate_dimensions[0], candidate_measures[0]
+
+    def _best_trend_pair(self, date_columns, candidate_measures):
+        """Pick a deterministic (date_column, measure_column) pair for
+        generic trend analysis: the first detected date-like column
+        together with the first candidate numeric measure. Schema-
+        agnostic -- never assumes "Order Date" or "Sales" by name."""
+        if not date_columns or not candidate_measures:
+            return None, None
+        return date_columns[0], candidate_measures[0]

@@ -166,11 +166,19 @@ with right:
     st.subheader("Data Health")
 
     if analyzer is not None:
+        total_rows = max(len(analyzer.df), 1)
+        total_cells = max(len(analyzer.df) * len(analyzer.df.columns), 1)
+
+        missing_ratio = analyzer.total_missing_values / total_cells
+        duplicate_ratio = analyzer.duplicate_rows / total_rows
+        empty_row_ratio = analyzer.completely_empty_rows / total_rows
+
         quality_score = 100
-        quality_score -= analyzer.total_missing_values
-        quality_score -= analyzer.duplicate_rows * 2
-        quality_score -= analyzer.completely_empty_rows * 5
-        quality_score = max(quality_score, 0)
+        quality_score -= missing_ratio * 50
+        quality_score -= duplicate_ratio * 30
+        quality_score -= empty_row_ratio * 20
+
+        quality_score = round(max(quality_score, 0), 1)
 
         st.metric("Data Quality Score", f"{quality_score}/100")
 

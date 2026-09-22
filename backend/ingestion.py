@@ -9,7 +9,12 @@ stays the structural/data-quality layer (Day 14), this module is the
 persistence layer that feeds the analytical engines (Checkpoint 3).
 
 Type handling:
-    * integer / float columns keep their pandas dtype -> INTEGER / REAL
+    * integer / float columns keep their pandas dtype -> INTEGER / REAL,
+      UNLESS they look like compact YYYYMMDD-encoded dates (Day 2 --
+      see _try_parse_compact_numeric_dates), a common export format
+      from BI/warehouse systems that pandas' CSV reader would otherwise
+      silently read as a plain int64 column, hiding it from every
+      downstream date-based capability (trends) entirely
     * object columns that look like dates (a large majority parse
       cleanly) are converted to datetimes and stored as ISO text
     * everything else is stored as TEXT
@@ -30,6 +35,18 @@ from backend.sql_safety import quote_identifier, safe_table_name
 
 _DATE_LIKE_SUCCESS_RATIO = 0.9
 
+# Compact numeric date encodings this module recognizes on an
+# integer/float column, tried in order. Each is a strict strptime-style
+# format applied only to values that are the right digit-length for it,
+# so an arbitrary numeric measure essentially never matches by chance:
+# valid calendar dates are a small fraction of all same-length digit
+# strings (e.g. ~3.65% of 8-digit numbers for YYYYMMDD, since month
+# must be 01-12 and day 01-31).
+_COMPACT_DATE_FORMATS = (
+    ("%Y%m%d", 8),  # 20240105
+    ("%Y%m", 6),    # 202401
+)
+
 
 def _infer_sqlite_type(series):
     if pd.api.types.is_bool_dtype(series):
@@ -43,12 +60,12 @@ def _infer_sqlite_type(series):
     return "TEXT"
 
 
-def _try_parse_dates(series):
-    """Best-effort, schema-agnostic date detection for an object column.
-    Only converts the column if a large majority of its non-null values
-    parse cleanly as dates -- otherwise it is left untouched as text, so
-    a column like "Product Code" full of a few date-shaped values isn't
-    silently coerced."""
+def _try_parse_object_dates(series):
+    """Best-effort, schema-agnostic date detection for an object
+    (string) column. Only converts the column if a large majority of
+    its non-null values parse cleanly as dates -- otherwise it is left
+    untouched as text, so a column like "Product Code" full of a few
+    date-shaped values isn't silently coerced."""
     non_null = series.dropna()
     if non_null.empty:
         return series
@@ -59,13 +76,61 @@ def _try_parse_dates(series):
     return series
 
 
+def _try_parse_compact_numeric_dates(series):
+    """A whole-number column can be a compact date encoding (YYYYMMDD
+    or YYYYMM) rather than a genuine numeric measure -- pandas' CSV
+    reader has no way to tell these apart from an int64 column on its
+    own, and without this check such a column never even reaches
+    _try_parse_object_dates (which only looks at object-dtype columns),
+    so it would silently stay numeric and be invisible to trend
+    detection. Only converts when EVERY sampled digit-length matches a
+    known compact format AND a large majority of the non-null values
+    parse into an actually valid calendar date/month under strict
+    parsing -- never a loose/guessed match. Floats with any nonzero
+    fractional part are left untouched (never a compact date encoding);
+    NaN stays NaN either way."""
+    if not (pd.api.types.is_integer_dtype(series) or pd.api.types.is_float_dtype(series)):
+        return series
+
+    non_null = series.dropna()
+    if non_null.empty:
+        return series
+    if pd.api.types.is_float_dtype(series) and (non_null % 1 != 0).any():
+        return series
+
+    digits = non_null.astype("int64").astype(str)
+    digit_length = digits.str.len().mode()
+    if digit_length.empty:
+        return series
+    digit_length = int(digit_length.iloc[0])
+
+    matching_format = next(
+        (fmt for fmt, length in _COMPACT_DATE_FORMATS if length == digit_length),
+        None,
+    )
+    if matching_format is None or not (digits.str.len() == digit_length).all():
+        return series
+
+    parsed_non_null = pd.to_datetime(digits, format=matching_format, errors="coerce")
+    success_ratio = parsed_non_null.notna().mean()
+    if success_ratio < _DATE_LIKE_SUCCESS_RATIO:
+        return series
+
+    # Re-parse the full (nullable) series the same way, preserving NaN
+    # as NaT rather than coercing it into a fabricated date.
+    full_digits = series.astype("Int64").astype(str).replace("<NA>", pd.NA)
+    return pd.to_datetime(full_digits, format=matching_format, errors="coerce")
+
+
 def prepare_dataframe_for_sqlite(df):
     """Return a copy of df with generic type inference applied. Does not
     mutate the original DataFrame."""
     prepared = df.copy()
     for column in prepared.columns:
         if prepared[column].dtype == object:
-            prepared[column] = _try_parse_dates(prepared[column])
+            prepared[column] = _try_parse_object_dates(prepared[column])
+        elif pd.api.types.is_integer_dtype(prepared[column]) or pd.api.types.is_float_dtype(prepared[column]):
+            prepared[column] = _try_parse_compact_numeric_dates(prepared[column])
         if pd.api.types.is_float_dtype(prepared[column]):
             prepared[column] = prepared[column].replace([np.inf, -np.inf], np.nan)
     return prepared

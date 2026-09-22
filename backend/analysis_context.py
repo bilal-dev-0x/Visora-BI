@@ -108,6 +108,9 @@ def _build_metrics(engine, capability, table_name):
             per_column[column] = {
                 "sum": engine.get_sum(column, table_name=table_name),
                 "average": engine.get_average(column, table_name=table_name),
+                "min": engine.get_min(column, table_name=table_name),
+                "max": engine.get_max(column, table_name=table_name),
+                "count": engine.get_count(column, table_name=table_name),
             }
         except Exception as exc:  # a single bad column should not sink the rest
             per_column[column] = {"error": str(exc)}
@@ -115,29 +118,32 @@ def _build_metrics(engine, capability, table_name):
 
 
 def _build_trends(engine, capability, table_name):
-    if not capability["trends"]["available"]:
-        return _unsupported(capability["trends"]["reason"])
+    trend_capability = capability["trends"]
+    if not trend_capability["available"]:
+        return _unsupported(trend_capability["reason"])
+
+    # Generic engine methods (Day 2): work for any date_column +
+    # measure_column pair capability detection found -- the
+    # business-specific "Order Date"/"Sales" pair included, since it's
+    # just one more valid (date, measure) combination to them.
+    date_column = trend_capability["date_column"]
+    measure_column = trend_capability["measure_column"]
 
     try:
-        monthly = engine.get_monthly_metrics(table_name=table_name)
-        growth = engine.calculate_growth(monthly)
-        moving_average = engine.calculate_moving_average(monthly)
+        monthly = engine.get_monthly_metrics_generic(date_column, measure_column, table_name=table_name)
+        growth = engine.calculate_growth_generic(monthly)
+        moving_average = engine.calculate_moving_average_generic(monthly)
+        period_comparison = engine.compare_last_two_periods_generic(monthly)
     except Exception as exc:
         return _error(exc)
 
     return _supported({
-        "monthly": [
-            {"month": month, "sales": sales, "profit": profit}
-            for month, sales, profit in monthly
-        ],
-        "growth": [
-            {"month": month, "sales": sales, "profit": profit, "growth_percent": growth_pct}
-            for month, sales, profit, growth_pct in growth
-        ],
-        "moving_average": [
-            {"month": month, "sales": sales, "moving_average": moving_avg}
-            for month, sales, moving_avg in moving_average
-        ],
+        "date_column": date_column,
+        "measure_column": measure_column,
+        "monthly": [{"period": period, "value": value} for period, value in monthly],
+        "growth": growth,
+        "moving_average": moving_average,
+        "period_comparison": period_comparison,
     })
 
 
@@ -149,18 +155,23 @@ def _build_contribution(engine, capability, table_name):
     dimension = contribution_capability["dimension"]
     measure = contribution_capability["measure"]
     try:
-        rows = engine.analyze(dimension, measure, table_name=table_name)
+        result = engine.analyze_with_metadata(
+            dimension, measure, table_name=table_name, top_n=_MAX_CONTRIBUTION_ROWS,
+        )
     except Exception as exc:
         return _error(exc)
+
+    if not result["supported"]:
+        return _unsupported(result["reason"])
 
     return _supported({
         "dimension": dimension,
         "measure": measure,
-        "rows_truncated": len(rows) > _MAX_CONTRIBUTION_ROWS,
-        "breakdown": [
-            {"category": category, "value": value, "percent": percent}
-            for category, value, percent in rows[:_MAX_CONTRIBUTION_ROWS]
-        ],
+        "total_categories": result["total_categories"],
+        "rows_truncated": result["rows_truncated"],
+        "truncation_reason": result["truncation_reason"],
+        # Each entry: {"category", "value", "percent", "rank"}
+        "breakdown": result["breakdown"],
     })
 
 
@@ -172,11 +183,12 @@ def _build_anomalies(engine, capability, table_name):
     per_column = {}
     for column in columns:
         try:
-            rows = engine.detect_z_score(column, table_name=table_name)
-            per_column[column] = [
-                {"row_id": row_id, "value": value, "z_score": z_score}
-                for row_id, value, z_score in rows
-            ]
+            result = engine.detect_with_context(column, table_name=table_name)
+            # Each anomaly dict already carries row_id/metric/value/
+            # baseline/z_score/deviation/context/reason -- pass through
+            # as-is (or [] for any non-"ok" but non-crashing status,
+            # e.g. zero_variance/insufficient_data).
+            per_column[column] = result["anomalies"] if result["supported"] else []
         except Exception as exc:
             per_column[column] = {"error": str(exc)}
     return _supported(per_column)
@@ -241,7 +253,12 @@ def analyze_dataset(table_name, csv_path, db_file=DB_FILE, dataset_metadata=None
         "numeric_statistics": analyzer.get_numeric_statistics(),
         "capabilities": {
             "metrics": {"available": capability["metrics"]["available"], "reason": capability["metrics"]["reason"]},
-            "trends": {"available": capability["trends"]["available"], "reason": capability["trends"]["reason"]},
+            "trends": {
+                "available": capability["trends"]["available"],
+                "reason": capability["trends"]["reason"],
+                "date_column": capability["trends"]["date_column"],
+                "measure_column": capability["trends"]["measure_column"],
+            },
             "contribution": {
                 "available": capability["contribution"]["available"],
                 "reason": capability["contribution"]["reason"],

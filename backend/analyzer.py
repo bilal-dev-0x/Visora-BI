@@ -59,15 +59,34 @@ class DataAnalyzer:
 
     def get_numeric_statistics(self):
         numeric_details = []
+
         for column in self.numeric_columns:
+            series = pd.to_numeric(self.df[column], errors="coerce")
+            series = series.replace([float("inf"), float("-inf")], pd.NA)
+            valid_values = series.dropna()
+
+            if valid_values.empty:
+                mean = median = standard_deviation = minimum = maximum = None
+            else:
+                mean = float(valid_values.mean())
+                median = float(valid_values.median())
+                standard_deviation = (
+                    float(valid_values.std())
+                    if len(valid_values) > 1
+                    else 0.0
+                )
+                minimum = float(valid_values.min())
+                maximum = float(valid_values.max())
+
             numeric_details.append({
                 "Column": column,
-                "Mean": float(self.df[column].mean()),
-                "Median": float(self.df[column].median()),
-                "Standard Deviation": float(self.df[column].std()),
-                "Min": float(self.df[column].min()),
-                "Max": float(self.df[column].max())
+                "Mean": mean,
+                "Median": median,
+                "Standard Deviation": standard_deviation,
+                "Min": minimum,
+                "Max": maximum
             })
+
         return numeric_details
 
     def get_categorical_distributions(self, top_n=10):
@@ -98,13 +117,55 @@ class DataAnalyzer:
         return distributions
 
     def get_other_details(self):
-        self.date_columns = self.df.select_dtypes(
-            include=["datetime"]
-        ).columns.tolist()
+        self.date_columns = []
+        self.categorical_columns = []
 
-        self.categorical_columns = self.df.select_dtypes(
-            include=["object", "category"]
-        ).columns.tolist()
+        for column in self.df.columns:
+            series = self.df[column]
+
+            # Numeric columns are measures, not categorical dimensions.
+            if pd.api.types.is_numeric_dtype(series):
+                continue
+
+            # Already-parsed datetime columns.
+            if pd.api.types.is_datetime64_any_dtype(series):
+                self.date_columns.append(column)
+                continue
+
+            # Detect date-like string columns.
+            if (
+                pd.api.types.is_object_dtype(series)
+                or pd.api.types.is_string_dtype(series)
+            ):
+                non_missing = series.notna().sum()
+
+                if non_missing > 0:
+                    parsed = pd.to_datetime(series, errors="coerce")
+                    parse_ratio = parsed.notna().sum() / non_missing
+                else:
+                    parse_ratio = 0
+
+                if parse_ratio >= 0.8:
+                    self.date_columns.append(column)
+                    continue
+
+            # Exclude identifier columns from categorical dimensions.
+            normalized_name = str(column).strip().lower()
+
+            if (
+                normalized_name == "transactionid"
+                or normalized_name.endswith("id")
+                or normalized_name.endswith("_id")
+            ):
+                continue
+
+            # Remaining string/category columns are categorical dimensions.
+            if (
+                pd.api.types.is_object_dtype(series)
+                or pd.api.types.is_categorical_dtype(series)
+                or pd.api.types.is_string_dtype(series)
+            ):
+                self.categorical_columns.append(column)
 
     def build_report(self):
         self.summary = {
