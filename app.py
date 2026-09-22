@@ -1,71 +1,35 @@
-from backend.analyzer import DataAnalyzer
-from backend.database import DataSetManager
-from backend.metrics import MetricsEngine
-from backend.trends import TrendEngine
-from backend.contribution import ContributionAnalyzer
-from backend.anomaly import AnomalyDetector
+"""
+Streamlit entry point for Visora BI.
 
-DATA_FILE = "data/sales_data.csv"
-REPORT_FILE = "reports/sales_summary.json"
-TEXT_FILE = "reports/"
+`streamlit run app.py` launches the full dashboard defined in
+frontend/dashboard.py. That file remains the single source of truth
+for the UI -- this file does not duplicate or reimplement any of its
+logic, it only launches it, so `streamlit run app.py` and
+`streamlit run frontend/dashboard.py` render the exact same app.
 
-analyzer = DataAnalyzer(DATA_FILE)
-analyzer.load_data()
-analyzer.get_basic_information()
-analyzer.get_quality_checks()
-analyzer.get_other_details()
-analyzer.build_report()
-analyzer.export_report()
-analyzer.clean_data()
+The previous terminal-only execution flow that used to live here
+(running the analytical engines directly against data/sales_data.csv
+and printing results to stdout) has been relocated to
+scripts/cli_report.py, so it no longer runs on Streamlit app startup.
+Run it directly with:
+    python scripts/cli_report.py
+"""
 
-database = DataSetManager("data/visora.db")
-database.connect()
-database.create_tables(analyzer.cleaned_df)
-database.insert_data(analyzer.cleaned_df)
+import runpy
+import sys
+from pathlib import Path
 
-db_df = database.get_data()
-print("\nDatabase data:")
-print(db_df.head())
-print("\nDatabase rows:", len(db_df))
-print("Cleaned rows:", len(analyzer.cleaned_df))
-print("\nDatabase schema:")
-for column in database.get_table_info():
-    print(column)
+DASHBOARD_PATH = Path(__file__).resolve().parent / "frontend" / "dashboard.py"
 
-metrics = MetricsEngine("data/visora.db")
-metrics.connect()
-print("\nTotal Sales:", metrics.get_sum("Sales"))
-print("Average Profit:", metrics.get_average("Profit"))
-group_by = metrics.get_grouped_metric("Category", "Sales", "SUM")
-print(group_by)
+# When Streamlit runs frontend/dashboard.py directly, it puts that
+# file's own directory (frontend/) on sys.path, which is how
+# dashboard.py's "from components.upload import upload_csv" resolves.
+# Running it via runpy from the repo root does not do that
+# automatically, so it's added here -- this is the one adjustment
+# needed to launch the same, unmodified dashboard from a different
+# entry script.
+frontend_dir = str(DASHBOARD_PATH.parent)
+if frontend_dir not in sys.path:
+    sys.path.insert(0, frontend_dir)
 
-trends = TrendEngine("data/visora.db")
-trends.connect()
-monthly_data = trends.get_monthly_metrics()
-print("\nMonthly Metrics:")
-for row in monthly_data:
-    print(row)
-
-growth_monthly = trends.calculate_growth(monthly_data)
-print("\nMonthly Growth:")
-for growth in growth_monthly:
-    print(growth[0], "--->", growth[3])
-
-moving_data = trends.calculate_moving_average(monthly_data)
-print("\nMoving Average:")
-for row in moving_data:
-    print(row)
-
-contributions = ContributionAnalyzer("data/visora.db")
-contributions.connect()
-sales_contribution = contributions.analyze("Category", "Sales")
-print("\nSales Contribution by Category:")
-for row in sales_contribution:
-    print(row)
-
-anomalies = AnomalyDetector("data/visora.db")
-anomalies.connect()
-sales_anomalies = anomalies.detect_z_score("Sales")
-print("\nSales Anomalies:")
-for row in sales_anomalies:
-    print(row)
+runpy.run_path(str(DASHBOARD_PATH), run_name="__main__")

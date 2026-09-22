@@ -10,6 +10,7 @@ import pandas as pd
 
 from components.upload import upload_csv
 from backend.analyzer import DataAnalyzer
+from backend.analysis_context import analyze_dataset
 from backend.insights import generate_insights
 from backend.dataset_registry import DatasetRegistry
 from backend.ingestion import DatasetIngestor
@@ -161,9 +162,6 @@ with left:
         st.info("Upload a CSV file to begin analysis.")
 
 with right:
-    st.subheader("Quick Actions")
-    st.button("Upload Dataset")
-
     st.markdown("---")
     st.subheader("Data Health")
 
@@ -269,3 +267,39 @@ else:
                 st.plotly_chart(figure, width="stretch")
         else:
             st.info("No numeric columns are available.")
+
+st.divider()
+st.subheader("Backend Analysis (Day 1 verification)")
+st.caption(
+    "Raw output of the new backend orchestration layer "
+    "(backend/analysis_context.py), for manual verification only."
+)
+
+if selected_dataset is None:
+    st.info("Upload or select a dataset to see backend analysis output.")
+else:
+    analysis_context = analyze_dataset(
+        selected_dataset["table_name"],
+        selected_dataset["stored_path"],
+        dataset_metadata=selected_dataset,
+    )
+
+    st.write(f"Dataset: {selected_dataset['original_filename']}")
+
+    with st.expander("Capabilities", expanded=True):
+        st.json(analysis_context["capabilities"])
+
+    with st.expander("Metrics"):
+        st.json(analysis_context["metrics"])
+
+    with st.expander("Trends"):
+        st.json(analysis_context["trends"])
+
+    with st.expander("Contribution"):
+        st.json(analysis_context["contribution"])
+
+    with st.expander("Anomalies"):
+        st.json(analysis_context["anomalies"])
+
+    with st.expander("Full analytical context (JSON)"):
+        st.json(analysis_context)
