@@ -21,6 +21,7 @@ dataset's data or the legacy `sales` table.
 """
 
 import sqlite3
+import threading
 
 import numpy as np
 import pandas as pd
@@ -73,10 +74,23 @@ def prepare_dataframe_for_sqlite(df):
 class DatasetIngestor:
     def __init__(self, db_file="data/visora.db"):
         self.db_file = db_file
+        self._thread_state = threading.local()
         self.conn = None
 
+    @property
+    def conn(self):
+        connection = getattr(self._thread_state, "connection", None)
+        if connection is None:
+            self.connect()
+            connection = self._thread_state.connection
+        return connection
+
+    @conn.setter
+    def conn(self, connection):
+        self._thread_state.connection = connection
+
     def connect(self):
-        self.conn = sqlite3.connect(self.db_file)
+        self.conn = sqlite3.connect(self.db_file, timeout=30)
         return self.conn
 
     def ingest_csv(self, csv_path, table_name):
