@@ -173,6 +173,18 @@ class DatasetIngestor:
                 "row_count": 0,
                 "column_count": 0,
             }
+        except (pd.errors.ParserError, UnicodeDecodeError):
+            # Covers content that isn't actually CSV -- e.g. a binary
+            # file (xlsx/pdf/image/...) saved or renamed with a .csv
+            # extension. VISORA officially supports CSV only this
+            # milestone; this is that rejection happening cleanly
+            # instead of the upload crashing the app.
+            return {
+                "ingested": False,
+                "reason": "The file could not be read as CSV. VISORA currently supports CSV files only.",
+                "row_count": 0,
+                "column_count": 0,
+            }
 
         if raw.shape[1] == 0:
             return {
