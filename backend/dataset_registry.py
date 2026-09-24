@@ -23,6 +23,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from backend.sql_safety import quote_identifier, safe_table_name
+
 _SAFE_STEM_RE = re.compile(r"[^A-Za-z0-9_-]+")
 
 
@@ -185,22 +187,77 @@ class DatasetRegistry:
         columns = [description[0] for description in cursor.description]
         return dict(zip(columns, row))
 
+    def _unlink_stored_dataset(self, dataset):
+        """Delete one stored CSV, tolerating an already-missing file.
+
+        Any other filesystem failure propagates. The caller must not
+        remove the registry row in that case, otherwise a permissions or
+        I/O failure would turn into a fake successful deletion.
+        """
+        stored_path = Path(dataset["stored_path"])
+        try:
+            stored_path.unlink()
+        except FileNotFoundError:
+            return False
+        return True
+
+    def _delete_tables_and_rows(self, datasets, dataset_id=None):
+        """Delete registry rows and their isolated tables atomically."""
+        try:
+            self.conn.execute("BEGIN")
+            if dataset_id is None:
+                for dataset in datasets:
+                    table_name = dataset["table_name"]
+                    if table_name == self.table_name_for(dataset["dataset_id"]):
+                        safe_table = safe_table_name(table_name)
+                        self.conn.execute(
+                            f"DROP TABLE IF EXISTS {quote_identifier(safe_table)}"
+                        )
+                self.conn.execute("DELETE FROM datasets")
+            else:
+                dataset = next(item for item in datasets if item["dataset_id"] == dataset_id)
+                table_name = dataset["table_name"]
+                if table_name == self.table_name_for(dataset_id):
+                    safe_table = safe_table_name(table_name)
+                    self.conn.execute(
+                        f"DROP TABLE IF EXISTS {quote_identifier(safe_table)}"
+                    )
+                self.conn.execute(
+                    "DELETE FROM datasets WHERE dataset_id = ?", (dataset_id,)
+                )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def delete_dataset(self, dataset_id):
+        """Remove exactly one registered dataset: its analytical table,
+        persisted CSV, and registry row.
+
+        Filesystem errors other than an already-missing CSV propagate and
+        the registry row is retained, so callers can surface a real
+        failure instead of pretending deletion succeeded. The table/row
+        database changes run in one transaction.
+        """
+        dataset = self.get_dataset(dataset_id)
+        if dataset is None:
+            return None
+
+        self._unlink_stored_dataset(dataset)
+        self._delete_tables_and_rows([dataset], dataset_id=dataset_id)
+        return dataset
+
     def clear_datasets(self):
-        """Remove all registered datasets and their isolated storage.
-        The legacy `sales` table and source CSV are never selected by this
-        registry-owned cleanup operation."""
+        """Remove every registered dataset file, isolated table, and row.
+
+        The legacy ``sales`` table and source CSV are never selected.
+        Missing stored files are already in the desired state; all other
+        filesystem errors propagate. Database table/row deletion is
+        transactional.
+        """
         datasets = self.list_datasets()
         for dataset in datasets:
-            table_name = dataset["table_name"]
-            if table_name.startswith("ds_"):
-                self.conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+            self._unlink_stored_dataset(dataset)
 
-            stored_path = Path(dataset["stored_path"])
-            try:
-                stored_path.unlink()
-            except FileNotFoundError:
-                pass
-
-        self.conn.execute("DELETE FROM datasets")
-        self.conn.commit()
+        self._delete_tables_and_rows(datasets)
         return len(datasets)

@@ -269,3 +269,279 @@ def generate_ai_insights(analysis_context, file_size_bytes=None):
         ai_skipped_reason=skipped_reason,
         attempts=attempts,
     )
+
+
+# ---------------------------------------------------------------------------
+# Structured AI result (Day 4)
+#
+# generate_structured_ai_insights() is the entry point Day 4's unified
+# pipeline (backend/pipeline.py) uses. Unlike generate_ai_insights()
+# above (which returns free-form markdown for the existing "Business
+# Insights (AI)" dashboard section and is left untouched), this
+# returns a normalized {summary, insights[], risks[], opportunities[]}
+# structure that the unified final report can embed directly.
+#
+# The model is given the same analytical context PLUS the already-
+# computed evidence/prioritized-findings lists (backend/evidence.py,
+# backend/prioritization.py) and is instructed to explain that
+# evidence, never invent new numbers or priorities. If the model's
+# response isn't valid/usable JSON, or no provider is configured/
+# reachable, this falls back to a structured result built entirely
+# from evidence -- deterministic, AI-free, and always available.
+# ---------------------------------------------------------------------------
+
+_STRUCTURED_SYSTEM_PROMPT = (
+    "You are the insight-explanation layer for VISORA BI. You will be "
+    "given a JSON analytical context, a list of deterministic 'evidence' "
+    "items, and those same items with a deterministic 'priority' "
+    "(critical/high/medium/low) already assigned -- all already computed "
+    "by VISORA's own analytics engine. Your only job is to explain this "
+    "evidence in plain, decision-useful language.\n\n"
+    "Respond with ONLY a single JSON object (no markdown fences, no "
+    "commentary before or after) matching exactly this shape:\n"
+    "{\n"
+    '  "summary": "2-4 sentence plain-language summary",\n'
+    '  "insights": [\n'
+    "    {\n"
+    '      "id": "the evidence id this insight explains, or null",\n'
+    '      "title": "short title",\n'
+    '      "type": "trend|anomaly|contribution|quality|metric",\n'
+    '      "priority": "critical|high|medium|low",\n'
+    '      "explanation": "1-3 sentences grounded only in the evidence",\n'
+    '      "evidence": ["evidence id(s) this insight is based on"]\n'
+    "    }\n"
+    "  ],\n"
+    '  "risks": ["short plain-language risk statements"],\n'
+    '  "opportunities": ["short plain-language opportunity statements"]\n'
+    "}\n\n"
+    "Rules: only reference numbers, percentages, dates, categories, "
+    "trends, and anomalies that literally appear in the provided JSON. "
+    "Never invent a figure, never recalculate one, never assign a "
+    "priority different from the one already given for an evidence "
+    "item you reference. If there is no evidence, return empty lists "
+    "and a summary saying so. Do not speculate about business causes "
+    "not supported by the data."
+)
+
+
+def _build_structured_prompt(analysis_context, evidence, prioritized_findings):
+    dataset_name = analysis_context.get("dataset", {}).get("original_filename") or "the uploaded dataset"
+    return (
+        f"Dataset: {dataset_name}\n\n"
+        "Analytical context (JSON, already computed):\n"
+        f"{json.dumps(analysis_context, indent=2)}\n\n"
+        "Evidence (JSON list):\n"
+        f"{json.dumps(evidence, indent=2)}\n\n"
+        "Prioritized findings (same evidence, each with a 'priority' "
+        "already assigned -- JSON list):\n"
+        f"{json.dumps(prioritized_findings, indent=2)}\n\n"
+        "Return the JSON object described in the system prompt, "
+        "explaining this evidence for a business user."
+    )
+
+
+def _strip_code_fence(text):
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
+_VALID_PRIORITIES = {"critical", "high", "medium", "low"}
+_VALID_INSIGHT_TYPES = {"trend", "anomaly", "contribution", "quality", "metric"}
+
+
+def _normalize_structured_payload(payload, evidence_by_id):
+    """Coerce a parsed JSON payload into the exact structured shape,
+    dropping/fixing anything malformed rather than raising. Returns
+    None if the payload isn't even a usable dict (caller treats that
+    as a failed AI attempt and falls back)."""
+    if not isinstance(payload, dict):
+        return None
+
+    summary = payload.get("summary")
+    summary = summary.strip() if isinstance(summary, str) and summary.strip() else "No summary was provided."
+
+    insights = []
+    for raw_insight in payload.get("insights") or []:
+        if not isinstance(raw_insight, dict):
+            continue
+        evidence_ids = raw_insight.get("evidence")
+        if isinstance(evidence_ids, str):
+            evidence_ids = [evidence_ids]
+        elif not isinstance(evidence_ids, list):
+            evidence_ids = []
+        # Only keep references to evidence that actually exists --
+        # never trust an AI-supplied id blindly, and never let a
+        # dangling reference imply a number that isn't there.
+        evidence_ids = [eid for eid in evidence_ids if eid in evidence_by_id]
+
+        priority = raw_insight.get("priority")
+        # Priority is deterministic (backend/prioritization.py) -- if
+        # this insight references evidence, its priority is pinned to
+        # that evidence's already-assigned priority, never whatever
+        # the model said.
+        if evidence_ids:
+            priority = evidence_by_id[evidence_ids[0]].get("priority", priority)
+        if priority not in _VALID_PRIORITIES:
+            priority = "low"
+
+        insight_type = raw_insight.get("type")
+        if insight_type not in _VALID_INSIGHT_TYPES:
+            insight_type = (evidence_by_id.get(evidence_ids[0], {}).get("type") if evidence_ids else None) or "metric"
+
+        title = raw_insight.get("title")
+        title = title.strip() if isinstance(title, str) and title.strip() else "Untitled finding"
+        explanation = raw_insight.get("explanation")
+        explanation = explanation.strip() if isinstance(explanation, str) else ""
+
+        insights.append({
+            "id": raw_insight.get("id") if isinstance(raw_insight.get("id"), str) else (evidence_ids[0] if evidence_ids else None),
+            "title": title,
+            "type": insight_type,
+            "priority": priority,
+            "explanation": explanation,
+            "evidence": [evidence_by_id[eid] for eid in evidence_ids],
+        })
+
+    risks = [str(item).strip() for item in (payload.get("risks") or []) if str(item).strip()]
+    opportunities = [str(item).strip() for item in (payload.get("opportunities") or []) if str(item).strip()]
+
+    return {
+        "available": True,
+        "summary": summary,
+        "insights": insights,
+        "risks": risks,
+        "opportunities": opportunities,
+    }
+
+
+def _parse_structured_response(text, evidence_by_id):
+    cleaned = _strip_code_fence(text)
+    try:
+        payload = json.loads(cleaned)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    return _normalize_structured_payload(payload, evidence_by_id)
+
+
+def _local_structured_fallback(analysis_context, evidence, prioritized_findings):
+    """Build the structured shape entirely from already-computed
+    evidence -- no AI, no invented text beyond simple templating
+    around numbers that are already present. Always available, used
+    whenever no AI provider produced usable structured output."""
+    insights = [
+        {
+            "id": item.get("id"),
+            "title": item.get("title"),
+            "type": item.get("type"),
+            "priority": item.get("priority", "low"),
+            "explanation": item.get("title"),
+            "evidence": [item],
+        }
+        for item in prioritized_findings
+    ]
+
+    risks = [
+        item["title"] for item in prioritized_findings
+        if item.get("priority") in ("critical", "high") and item.get("type") in ("anomaly", "quality")
+    ]
+    opportunities = [
+        item["title"] for item in prioritized_findings
+        if item.get("type") in ("trend", "concentration") and item.get("priority") != "low"
+    ]
+
+    if prioritized_findings:
+        top = prioritized_findings[0]
+        summary = (
+            f"{len(prioritized_findings)} notable finding(s) detected, generated directly from "
+            f"VISORA's analytical engine. Most significant: {top.get('title')} ({top.get('priority')})."
+        )
+    else:
+        summary = _local_fallback_text(analysis_context)
+
+    return {
+        "available": True,
+        "summary": summary,
+        "insights": insights,
+        "risks": risks,
+        "opportunities": opportunities,
+    }
+
+
+@dataclass
+class AIStructuredResult:
+    result: dict
+    source: str  # "ai" or "local_fallback"
+    provider_used: Optional[str] = None
+    ai_attempted: bool = False
+    ai_skipped_reason: Optional[str] = None
+    attempts: List[ProviderAttempt] = field(default_factory=list)
+
+
+def generate_structured_ai_insights(analysis_context, evidence, prioritized_findings, file_size_bytes=None):
+    """Return an AIStructuredResult: a normalized {summary, insights[],
+    risks[], opportunities[]} dict, either produced by an AI provider
+    (grounded in `evidence`/`prioritized_findings`) or, on any failure
+    mode at all (no provider configured, provider error, malformed
+    response, oversized context), built locally from the same
+    evidence with no AI involvement. Never raises."""
+    evidence_by_id = {item["id"]: item for item in (evidence or []) if item.get("id")}
+
+    within_ai_limit = file_size_bytes is None or file_size_bytes <= AI_CONTEXT_LIMIT_BYTES
+    if not within_ai_limit:
+        return AIStructuredResult(
+            result=_local_structured_fallback(analysis_context, evidence, prioritized_findings),
+            source="local_fallback",
+            ai_attempted=False,
+            ai_skipped_reason="size_threshold_exceeded",
+        )
+
+    system = _STRUCTURED_SYSTEM_PROMPT
+    prompt = _build_structured_prompt(analysis_context, evidence, prioritized_findings)
+    attempts = []
+
+    for provider_config in load_provider_chain():
+        if not provider_config.is_configured:
+            continue
+        provider = build_provider(provider_config)
+        if provider is None:
+            attempts.append(ProviderAttempt(
+                provider_config.display_name, "not_configured", f"Unknown provider type '{provider_config.kind}'.",
+            ))
+            continue
+        try:
+            raw_text = provider.complete(system, prompt)
+        except AIProviderError as exc:
+            attempts.append(ProviderAttempt(exc.provider_name, exc.category, exc.message))
+            continue
+        except Exception as exc:  # a provider must never take the pipeline down with it
+            attempts.append(ProviderAttempt(provider_config.display_name, "unavailable", str(exc)))
+            continue
+
+        normalized = _parse_structured_response(raw_text, evidence_by_id)
+        if normalized is None:
+            attempts.append(ProviderAttempt(provider.name, "invalid_response", "Response was not valid structured JSON."))
+            continue
+
+        return AIStructuredResult(
+            result=normalized,
+            source="ai",
+            provider_used=provider.name,
+            ai_attempted=True,
+            attempts=attempts,
+        )
+
+    skipped_reason = "not_configured" if not attempts else None
+    return AIStructuredResult(
+        result=_local_structured_fallback(analysis_context, evidence, prioritized_findings),
+        source="local_fallback",
+        ai_attempted=bool(attempts),
+        ai_skipped_reason=skipped_reason,
+        attempts=attempts,
+    )
