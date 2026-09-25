@@ -1,17 +1,17 @@
 """
-CSV -> SQLite dataset ingestion (Day 15 / Checkpoint 2).
+CSV -> SQLite dataset ingestion.
 
 Takes a persisted CSV file (already registered by DatasetRegistry) and
 loads it into its own SQLite table, named after the dataset_id
 (ds_<uuid hex>), so the analytical engines have a concrete table to
 query. This is intentionally independent of DataAnalyzer: DataAnalyzer
-stays the structural/data-quality layer (Day 14), this module is the
+stays the structural/data-quality layer, this module is the
 persistence layer that feeds the analytical engines (Checkpoint 3).
 
 Type handling:
     * integer / float columns keep their pandas dtype -> INTEGER / REAL,
-      UNLESS they look like compact YYYYMMDD-encoded dates (Day 2 --
-      see _try_parse_compact_numeric_dates), a common export format
+      UNLESS they look like compact YYYYMMDD-encoded dates (see
+      _try_parse_compact_numeric_dates), a common export format
       from BI/warehouse systems that pandas' CSV reader would otherwise
       silently read as a plain int64 column, hiding it from every
       downstream date-based capability (trends) entirely

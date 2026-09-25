@@ -1,5 +1,5 @@
 """
-Schema-driven capability detection (Day 1).
+Schema-driven capability detection.
 
 Given a table_name that has already been ingested into SQLite by
 DatasetIngestor, CapabilityDetector inspects the dataset's *actual*
@@ -122,7 +122,7 @@ class CapabilityDetector:
         # actually present (keeps the exact historical reason text for
         # datasets that have neither column, e.g. "Missing required
         # column(s) for trend analysis: Order Date, Sales"). Otherwise
-        # fall back to Day 2's generic detection: any date-like column
+        # fall back to the generic detection: any date-like column
         # paired with any numeric measure -- e.g. "Date" + "Revenue" is
         # now a valid trend capability even though it isn't the
         # business-specific "Order Date" + "Sales" combination.

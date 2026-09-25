@@ -1,21 +1,22 @@
 """
-Unified analysis + reporting pipeline (Day 4).
+Unified analysis + reporting pipeline.
 
 analyze_dataset(dataset_id) is the ONE backend call the frontend needs
 for a fully analyzed, AI-explained, prioritized, report-ready result.
-It coordinates modules that already exist (Day 1-3) plus the new Day 4
+It coordinates modules that already exist (analytical intelligence, AI
+provider integration) plus the
 layers, without duplicating any of their logic or recalculating
 anything they already computed:
 
     Dataset (registry lookup)
-        -> backend.analysis_context.analyze_dataset()   (Day 1-2: metrics/
+        -> backend.analysis_context.analyze_dataset()   (metrics/
            trends/contribution/anomalies/data-quality/capabilities)
-        -> backend.evidence.build_evidence()             (Day 4)
-        -> backend.prioritization.prioritize_evidence()  (Day 4)
+        -> backend.evidence.build_evidence()
+        -> backend.prioritization.prioritize_evidence()
         -> backend.ai_service.generate_structured_ai_insights()
-           (Day 3 provider chain / local fallback, Day 4 structured shape)
+           (provider chain / local fallback, structured shape)
         -> unified final report (this module)
-        -> backend.report_store persistence               (Day 4)
+        -> backend.report_store persistence
 
 Every capability section keeps the existing {"available", "data",
 "reason"} contract untouched. Nothing here is a second reporting
@@ -101,7 +102,7 @@ def _assemble_final_report(dataset, analysis_context, evidence, prioritized_find
 
 
 def analyze_dataset(dataset_id, registry=None, db_file=DB_FILE, persist=True):
-    """Run the complete Day 4 pipeline for one dataset and return a
+    """Run the complete unified analysis pipeline for one dataset and return a
     single, JSON-safe unified report (see module docstring for the
     shape). Set persist=False to skip writing the current-JSON /
     per-dataset TXT report files (e.g. for tests or a dry-run/preview

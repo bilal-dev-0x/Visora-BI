@@ -1,4 +1,4 @@
-"""Standalone validation script for Day 15 Checkpoints 1 and 2.
+"""Standalone validation script for the Dataset Registry and Dataset Ingestion layers (Checkpoints 1-2).
 Run with: python tests/checkpoint1_2_validation.py
 Uses a throwaway sandbox directory so it never touches the real
 data/visora.db or data/datasets/ used by the app.
@@ -15,7 +15,7 @@ import pandas as pd
 from backend.dataset_registry import DatasetRegistry
 from backend.ingestion import DatasetIngestor
 
-SANDBOX = Path("/tmp/visora_day15_sandbox")
+SANDBOX = Path("/tmp/visora_registry_ingestion_sandbox")
 PASS = []
 FAIL = []
 
@@ -161,6 +161,36 @@ def main():
     check(
         "CP2: sales table (legacy) untouched by malicious filename",
         Path(db_file).exists(),
+    )
+
+    # Malformed / non-CSV content must not crash registration itself.
+    # This exercises the real dashboard path (register_upload ->
+    # ingest_csv), not ingest_csv() in isolation -- the file is already
+    # persisted to disk by the time register_upload() would otherwise
+    # raise, so a crash here would both break the upload and leave an
+    # orphaned, unregistered file behind in storage_dir.
+    csv_ragged = SANDBOX / "ragged_rows.csv"
+    csv_ragged.write_text("a,b,c\n1,2,3\n4,5,6,7\n")
+    dataset_id_ragged = registry.register_upload("ragged_rows.csv", csv_ragged)
+    check("CP2: ragged-row CSV does not crash registration", dataset_id_ragged is not None)
+    meta_ragged = registry.get_dataset(dataset_id_ragged)
+    check("CP2: ragged-row CSV is registered (visible in history)", meta_ragged is not None)
+    result_ragged = ingestor.ingest_csv(meta_ragged["stored_path"], meta_ragged["table_name"])
+    check("CP2: ragged-row CSV reported as not ingested", result_ragged["ingested"] is False)
+    registry.update_counts(dataset_id_ragged, result_ragged["row_count"], result_ragged["column_count"])
+    check(
+        "CP2: ragged-row CSV counts reconciled to 0 after failed ingestion",
+        registry.get_dataset(dataset_id_ragged)["row_count"] == 0,
+    )
+
+    csv_binary = SANDBOX / "binary_disguised.csv"
+    csv_binary.write_bytes(bytes(range(256)) * 4)
+    dataset_id_binary = registry.register_upload("binary_disguised.csv", csv_binary)
+    check("CP2: binary content disguised as .csv does not crash registration", dataset_id_binary is not None)
+    meta_binary = registry.get_dataset(dataset_id_binary)
+    check(
+        "CP2: binary content disguised as .csv is registered with unknown counts",
+        meta_binary is not None and meta_binary["row_count"] is None,
     )
 
     conn.close()

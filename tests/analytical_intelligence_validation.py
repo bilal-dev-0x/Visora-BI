@@ -1,4 +1,4 @@
-"""Focused validation for Day 2: Complete Analytical Intelligence.
+"""Focused validation for the Analytical Intelligence layer.
 
 Covers the generalized MetricsEngine, TrendEngine, ContributionAnalyzer,
 AnomalyDetector, plus their exposure through backend/capabilities.py and
@@ -29,7 +29,7 @@ from backend.ingestion import DatasetIngestor
 from backend.metrics import MetricsEngine
 from backend.trends import TrendEngine
 
-SANDBOX = Path(gettempdir()) / "visora_day2_sandbox"
+SANDBOX = Path(gettempdir()) / "visora_analytical_intelligence_sandbox"
 PASS, FAIL = [], []
 
 

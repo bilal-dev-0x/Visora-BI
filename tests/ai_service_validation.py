@@ -1,4 +1,4 @@
-"""Standalone validation for Day 3: backend/config.py (upload + AI
+"""Standalone validation for backend/config.py (upload + AI
 context size policy, provider config loading), backend/ai_providers.py
 (provider abstraction, categorized failures), and backend/ai_service.py
 (fallback chain orchestration + local fallback). Mirrors the
@@ -266,7 +266,7 @@ def main():
     # ---- Full analytical context reaches the provider untruncated ----
     # A large context (well over any old arbitrary char cap) must still
     # be sent to the provider in full when the file is <=100MB -- no
-    # token-compression / context-trimming is in scope for Day 3.
+    # token-compression / context-trimming is in scope for this milestone.
     with with_env(**provider_env) as ai_service:
         large_context = dict(SAMPLE_CONTEXT)
         large_context["anomalies"] = {

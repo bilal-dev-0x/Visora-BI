@@ -4,7 +4,7 @@ from backend.engine_support import get_table_columns, table_exists
 from backend.sql_safety import quote_identifier, safe_table_name
 
 # Every generic aggregation MetricsEngine can run. Kept as a single
-# source of truth so get_grouped_metric() and the Day 2 convenience
+# source of truth so get_grouped_metric() and the analytical-intelligence convenience
 # wrappers (get_min/get_max/get_count/get_metric) never drift apart.
 ALLOWED_AGGREGATIONS = ("SUM", "AVG", "MIN", "MAX", "COUNT")
 

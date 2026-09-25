@@ -14,7 +14,7 @@ This module performs no analytical calculation of its own. Every
 number in the result comes from an existing engine; this file only
 decides *which* columns to hand each engine (using CapabilityDetector's
 suggestions), calls it, and assembles/serializes the combined result.
-It is deliberately the foundation for Day 3's AI context pipeline, not
+It is deliberately the foundation for the AI context pipeline, not
 a second reporting system -- DataAnalyzer.build_report()/export_report()
 are untouched and keep working exactly as before.
 """
@@ -122,7 +122,7 @@ def _build_trends(engine, capability, table_name):
     if not trend_capability["available"]:
         return _unsupported(trend_capability["reason"])
 
-    # Generic engine methods (Day 2): work for any date_column +
+    # Generic engine methods: work for any date_column +
     # measure_column pair capability detection found -- the
     # business-specific "Order Date"/"Sales" pair included, since it's
     # just one more valid (date, measure) combination to them.

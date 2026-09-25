@@ -1,4 +1,4 @@
-"""Standalone validation script for Day 15 Checkpoint 4 (dashboard integration).
+"""Standalone validation script for dashboard integration (Checkpoint 4).
 
 Uses Streamlit's AppTest framework against a sandboxed copy of the repo so
 it never touches the real data/visora.db or data/datasets/.
@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SANDBOX = Path("/tmp/visora_day15_sandbox_cp4")
+SANDBOX = Path("/tmp/visora_dashboard_integration_sandbox")
 
 PASS, FAIL = [], []
 

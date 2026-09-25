@@ -1,10 +1,10 @@
 """
-AI insight layer (Day 3).
+AI insight layer.
 
 generate_ai_insights() is the single entry point the dashboard calls.
 It never performs its own business-metric calculations -- every number
 it can talk about already exists in the unified analytical context
-produced by backend/analysis_context.py (Day 1). This module's job is
+produced by backend/analysis_context.py. This module's job is
 only to:
 
     1. decide whether the dataset is small enough to send that context
@@ -272,9 +272,9 @@ def generate_ai_insights(analysis_context, file_size_bytes=None):
 
 
 # ---------------------------------------------------------------------------
-# Structured AI result (Day 4)
+# Structured AI result
 #
-# generate_structured_ai_insights() is the entry point Day 4's unified
+# generate_structured_ai_insights() is the entry point the unified
 # pipeline (backend/pipeline.py) uses. Unlike generate_ai_insights()
 # above (which returns free-form markdown for the existing "Business
 # Insights (AI)" dashboard section and is left untouched), this

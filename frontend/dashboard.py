@@ -203,7 +203,7 @@ uploaded_file = upload_csv(
 )
 
 if uploaded_file is not None:
-    # File-size policy (Day 3): reject anything over the upload cap
+    # File-size policy: reject anything over the upload cap
     # gracefully -- before it is ever persisted, ingested, or handed to
     # any analytical engine -- rather than letting a huge file crash or
     # stall the app.
@@ -220,19 +220,30 @@ if uploaded_file is not None:
         # Streamlit upload buffer.
         upload_key = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
         if st.session_state.get("processed_upload_key") != upload_key:
-            dataset_id = registry.register_upload(uploaded_file.name, uploaded_file)
-            dataset = registry.get_dataset(dataset_id)
-            ingest_result = ingestor.ingest_csv(dataset["stored_path"], dataset["table_name"])
-            registry.update_counts(dataset_id, ingest_result["row_count"], ingest_result["column_count"])
-            if not ingest_result["ingested"]:
-                st.warning(
-                    f"'{dataset['original_filename']}' was saved, but couldn't be loaded for "
-                    f"further analysis: {ingest_result['reason']}"
-                )
-            st.session_state["processed_upload_key"] = upload_key
-            st.session_state["processed_dataset_id"] = dataset_id
-            st.session_state["selected_dataset_id"] = dataset_id
-            st.session_state["dataset_history_select"] = dataset_id
+            # Each step below (register_upload / ingest_csv / update_counts)
+            # is documented as never raising on a malformed/unreadable CSV --
+            # this try/except is a last-resort backstop against anything
+            # unexpected (e.g. a disk I/O failure) so an upload can never
+            # crash the whole dashboard run; it surfaces as a normal error
+            # message instead, and the uploader buffer is not marked as
+            # processed, so the user can retry.
+            try:
+                dataset_id = registry.register_upload(uploaded_file.name, uploaded_file)
+                dataset = registry.get_dataset(dataset_id)
+                ingest_result = ingestor.ingest_csv(dataset["stored_path"], dataset["table_name"])
+                registry.update_counts(dataset_id, ingest_result["row_count"], ingest_result["column_count"])
+            except Exception as exc:
+                st.error(f"Could not process '{uploaded_file.name}': {exc}")
+            else:
+                if not ingest_result["ingested"]:
+                    st.warning(
+                        f"'{dataset['original_filename']}' was saved, but couldn't be loaded for "
+                        f"further analysis: {ingest_result['reason']}"
+                    )
+                st.session_state["processed_upload_key"] = upload_key
+                st.session_state["processed_dataset_id"] = dataset_id
+                st.session_state["selected_dataset_id"] = dataset_id
+                st.session_state["dataset_history_select"] = dataset_id
 
 st.sidebar.subheader("Dataset History")
 datasets = registry.list_datasets()
@@ -348,16 +359,35 @@ if selected_dataset_id:
         st.session_state["selected_dataset_id"] = None
         _invalidate_analysis_cache([missing_dataset_id])
 
+analyzer_error = None
 if selected_dataset is not None:
-    analyzer = DataAnalyzer(selected_dataset["stored_path"])
-    analyzer.load_data()
-    analyzer.get_basic_information()
-    analyzer.get_quality_checks()
-    analyzer.get_other_details()
-    st.sidebar.caption(f"Analyzing: {selected_dataset['original_filename']}")
+    # This legacy DataAnalyzer re-reads the raw CSV directly (independent
+    # of backend/ingestion.py's SQLite load), so a dataset that failed
+    # ingestion -- malformed/ragged rows, non-CSV binary content, etc. --
+    # can still reach this point selected but unparseable. Without this
+    # guard, that raises an uncaught pandas exception here and crashes
+    # the whole dashboard render, even though the unified pipeline (used
+    # for AI insights/reports elsewhere on this page) already handles
+    # the same file gracefully. Degrade to the "no dataset" display
+    # instead, with a clear reason, rather than crashing.
+    try:
+        analyzer = DataAnalyzer(selected_dataset["stored_path"])
+        analyzer.load_data()
+        analyzer.get_basic_information()
+        analyzer.get_quality_checks()
+        analyzer.get_other_details()
+        st.sidebar.caption(f"Analyzing: {selected_dataset['original_filename']}")
+    except Exception as exc:
+        analyzer = None
+        analyzer_error = str(exc)
 
-if selected_dataset is not None:
+if selected_dataset is not None and analyzer is not None:
     st.info(f"Analyzing: {selected_dataset['original_filename']}")
+elif selected_dataset is not None and analyzer_error is not None:
+    st.warning(
+        f"'{selected_dataset['original_filename']}' could not be loaded for the overview "
+        f"panel below: {analyzer_error}"
+    )
 else:
     st.info("No dataset selected - upload a CSV to begin analysis.")
 
@@ -520,7 +550,7 @@ else:
 final_report = None
 if selected_dataset is not None:
     # One backend call produces one complete structured intelligence
-    # result (Day 4). The session snapshot reuses it across unrelated
+    # result. The session snapshot reuses it across unrelated
     # widget reruns and reruns automatically when this dataset's immutable
     # version signature changes.
     final_report = _get_or_run_pipeline(selected_dataset, registry)
@@ -604,7 +634,7 @@ else:
     # The TXT report is dataset-specific and is written when this
     # dataset version is actually analyzed -- never a shared/generic filename, and
     # it disappears once this dataset (or its report) no longer
-    # exists, per Day 4's report-lifecycle requirements. The raw
+    # exists, per the report-lifecycle requirements. The raw
     # reports/ folder is never exposed directly; this download button
     # is the only user-facing access path to it.
     txt_path = report_store.txt_report_path(selected_dataset)
@@ -698,7 +728,7 @@ else:
                 st.plotly_chart(figure, width="stretch")
 
 st.divider()
-st.subheader("Backend Analysis (Day 1 verification)")
+st.subheader("Backend Analysis (Legacy Overview)")
 st.caption(
     "Raw output of the unified backend pipeline "
     "(backend/pipeline.py, built on backend/analysis_context.py), for manual verification only."

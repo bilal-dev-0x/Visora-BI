@@ -1,7 +1,7 @@
 """
-Report file lifecycle (Day 4).
+Report file lifecycle.
 
-Two on-disk report representations, per the Day 4 spec:
+Two on-disk report representations:
 
     A. Unified JSON -- ONE current file (reports/current_report.json),
        always representing the most recently produced unified report.

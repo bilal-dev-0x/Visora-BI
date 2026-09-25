@@ -1,5 +1,5 @@
 """
-Persistent local dataset registry (Day 15 / Checkpoint 1).
+Persistent local dataset registry.
 
 Responsibilities of this module -- and only this module:
     * give every uploaded CSV a collision-safe unique identity (dataset_id)
@@ -161,6 +161,17 @@ class DatasetRegistry:
             frame = pd.read_csv(csv_path)
         except pd.errors.EmptyDataError:
             return 0, 0
+        except (pd.errors.ParserError, UnicodeDecodeError, OSError):
+            # The file was already persisted to disk by this point, so
+            # registration must still succeed and the dataset must still
+            # show up in history -- otherwise this would crash the whole
+            # upload with an unhandled exception while leaving an orphaned,
+            # unregistered file behind in storage_dir. Row/column counts
+            # simply stay unknown (None); backend/ingestion.py's ingest_csv()
+            # hits the same unparseable content next and is what surfaces
+            # a clear, user-facing reason ("couldn't be loaded for further
+            # analysis: ...") instead of a crash.
+            return None, None
         return int(len(frame)), int(len(frame.columns))
 
     def update_counts(self, dataset_id, row_count, column_count):

@@ -273,6 +273,42 @@ def _ui_lifecycle_checks(
     check("UI lifecycle: no stale deleted dataset remains after a final rerun", not app.exception and "ui-a.csv" not in [button.label for button in app.sidebar.button] and "ui-b.csv" not in [button.label for button in app.sidebar.button])
 
 
+def _malformed_upload_ui_check(root, registry):
+    """A malformed/non-CSV upload through the real dashboard must never
+    crash the app (Streamlit exception) and must never leave an
+    orphaned, unregistered file behind in storage -- it should surface
+    as a normal warning/error and the dataset either doesn't register
+    or is registered with a clear 'could not be loaded' reason."""
+    from streamlit.testing.v1 import AppTest
+
+    dashboard_path = Path(__file__).resolve().parent.parent / "frontend" / "dashboard.py"
+    app = AppTest.from_file(str(dashboard_path), default_timeout=30)
+    app.run()
+
+    ragged_csv = b"a,b,c\n1,2,3\n4,5,6,7\n"
+    app.file_uploader[0].upload("ragged.csv", ragged_csv, "text/csv").run()
+    check("UI malformed upload: ragged-row CSV does not crash the dashboard", not app.exception)
+
+    datasets_dir = root / "data" / "datasets"
+    stored_files = list(datasets_dir.glob("*.csv")) if datasets_dir.exists() else []
+    registered_ids = {entry["dataset_id"] for entry in registry.list_datasets()}
+    check(
+        "UI malformed upload: every stored file has a matching registry row (no orphan)",
+        len(stored_files) == len(registered_ids),
+    )
+
+    binary_bytes = bytes(range(256)) * 4
+    app.file_uploader[0].upload("binary.csv", binary_bytes, "text/csv").run()
+    check("UI malformed upload: binary content disguised as .csv does not crash the dashboard", not app.exception)
+
+    stored_files_after = list(datasets_dir.glob("*.csv")) if datasets_dir.exists() else []
+    registered_ids_after = {entry["dataset_id"] for entry in registry.list_datasets()}
+    check(
+        "UI malformed upload: still no orphaned file after a second bad upload",
+        len(stored_files_after) == len(registered_ids_after),
+    )
+
+
 def main():
     old_cwd = Path.cwd()
     temp_base = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "Temp" / "opencode"
@@ -358,6 +394,7 @@ def main():
                 clear_spy,
                 provider,
             )
+            _malformed_upload_ui_check(root, registry)
     finally:
         os.chdir(old_cwd)
         st.cache_resource.clear()

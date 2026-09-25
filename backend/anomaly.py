@@ -67,7 +67,7 @@ class AnomalyDetector:
 
         return anomalies
 
-    # -- Day 2: richer, evidence-backed anomaly output. detect_z_score()
+    # -- Richer, evidence-backed anomaly output. detect_z_score()
     # above is untouched (existing callers keep its exact tuple-list
     # shape); this is a new, opt-in method that returns a structured
     # result with baseline/deviation/context/reason per anomaly, plus

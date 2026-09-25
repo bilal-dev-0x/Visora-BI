@@ -1,4 +1,4 @@
-"""Focused validation for Day 1: backend/capabilities.py (schema-driven
+"""Focused validation for backend/capabilities.py (schema-driven
 capability detection) and backend/analysis_context.py (the unified
 analytical context orchestrator). Mirrors the style/sandboxing approach
 of tests/checkpoint3_validation.py -- never touches the real
@@ -18,7 +18,7 @@ from backend.capabilities import CapabilityDetector
 from backend.dataset_registry import DatasetRegistry
 from backend.ingestion import DatasetIngestor
 
-SANDBOX = Path("/tmp/visora_day1_sandbox")
+SANDBOX = Path("/tmp/visora_capabilities_sandbox")
 PASS, FAIL = [], []
 
 

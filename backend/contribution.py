@@ -65,7 +65,7 @@ class ContributionAnalyzer:
             if metric_value is not None
         ]
 
-    # -- Day 2: ranked/top-N/bottom-N contribution with high-cardinality
+    # -- Ranked/top-N/bottom-N contribution with high-cardinality
     # protection. analyze() above is untouched (existing callers keep
     # its exact tuple-list return shape); this is a richer, opt-in
     # method for callers (backend/analysis_context.py) that want rank,

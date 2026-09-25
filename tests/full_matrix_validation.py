@@ -1,4 +1,4 @@
-"""Day 15 Section 10 test matrix -- the 16-item edge case matrix required
+"""Full-matrix test suite -- the 16-item edge case matrix required
 by the spec, run against a throwaway sandbox."""
 import shutil
 import sqlite3
@@ -16,7 +16,7 @@ from backend.trends import TrendEngine
 from backend.contribution import ContributionAnalyzer
 from backend.anomaly import AnomalyDetector
 
-SANDBOX = Path("/tmp/visora_day15_full_matrix")
+SANDBOX = Path("/tmp/visora_full_matrix_sandbox")
 PASS, FAIL = [], []
 
 

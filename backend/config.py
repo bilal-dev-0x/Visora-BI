@@ -1,5 +1,5 @@
 """
-Centralized configuration for VISORA BI (Day 3).
+Centralized configuration for VISORA BI.
 
 This is the single place that reads environment variables / Streamlit
 secrets. Nothing else in the codebase should call os.environ or
@@ -90,7 +90,7 @@ MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 AI_CONTEXT_LIMIT_BYTES = AI_CONTEXT_LIMIT_MB * 1024 * 1024
 
 # Formats VISORA officially ingests this milestone. Excel/JSON/Parquet/
-# PDF/image ingestion is explicitly out of scope for Day 3.
+# PDF/image ingestion is explicitly out of scope for this milestone.
 SUPPORTED_UPLOAD_EXTENSIONS = ("csv",)
 
 # Network timeout for a single AI provider call, in seconds. A slow

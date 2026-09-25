@@ -1,5 +1,5 @@
 """
-Evidence layer (Day 4).
+Evidence layer.
 
 build_evidence() turns the unified analytical context that
 backend/analysis_context.py already computed into a flat list of

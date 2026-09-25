@@ -1,5 +1,5 @@
 """
-AI provider abstraction (Day 3).
+AI provider abstraction.
 
 Each provider exposes one method -- complete(system, prompt) -> str --
 so backend/ai_service.py's fallback chain never has to know which

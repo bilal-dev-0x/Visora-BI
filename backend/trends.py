@@ -85,7 +85,7 @@ class TrendEngine:
             moving_data.append((month, sales, moving_average))
         return moving_data
 
-    # -- Day 2: generic (arbitrary date column + arbitrary numeric
+    # -- Generic (arbitrary date column + arbitrary numeric
     # measure) trend analysis. These never assume "Order Date" or
     # "Sales" -- callers (typically backend/capabilities.py's detected
     # date_column/measure_column pair) supply the columns explicitly.

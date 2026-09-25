@@ -1,4 +1,4 @@
-"""Standalone validation script for Day 15 Checkpoint 3 (analytical engines)."""
+"""Standalone validation script for the analytical engines (Checkpoint 3)."""
 import shutil
 import sqlite3
 import sys
@@ -15,7 +15,7 @@ from backend.trends import TrendEngine
 from backend.contribution import ContributionAnalyzer
 from backend.anomaly import AnomalyDetector
 
-SANDBOX = Path("/tmp/visora_day15_sandbox_cp3")
+SANDBOX = Path("/tmp/visora_analytical_engines_sandbox")
 PASS, FAIL = [], []
 
 

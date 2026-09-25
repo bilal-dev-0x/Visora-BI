@@ -1,5 +1,5 @@
 """
-Deterministic prioritization (Day 4).
+Deterministic prioritization.
 
 prioritize_evidence() assigns a Critical/High/Medium/Low priority to
 each evidence item produced by backend/evidence.py, using only the

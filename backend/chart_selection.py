@@ -1,5 +1,5 @@
 """
-Chart type selection support (Day 4).
+Chart type selection support.
 
 The dashboard exposes a Chart Type dropdown (Bar/Line/Pie/Scatter).
 This module holds the small, pure, data-aware logic for which chart
@@ -18,7 +18,7 @@ CHART_TYPES = ("Bar", "Line", "Pie", "Scatter")
 
 
 def suggest_default_chart_type(date_columns, categorical_columns, numeric_columns):
-    """A reasonable default, in the same spirit as the Day 4 spec's
+    """A reasonable default, in the same spirit as this module's
     examples: a date+measure pair suggests Line, a category+measure
     pair suggests Bar, otherwise fall back to whatever is possible."""
     if date_columns and numeric_columns:
