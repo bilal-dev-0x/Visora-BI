@@ -23,6 +23,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
+
+from backend.readers import UnreadableFileError, normalize_suffix, read_table
 from backend.sql_safety import quote_identifier, safe_table_name
 
 _SAFE_STEM_RE = re.compile(r"[^A-Za-z0-9_-]+")
@@ -100,7 +103,10 @@ class DatasetRegistry:
         dataset_id = str(uuid.uuid4())
         stem = _sanitize_stem(Path(str(original_filename)).stem)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        stored_filename = f"{stem}_{timestamp}_{dataset_id}.csv"
+        # Keep the upload's real (supported) extension on disk so the
+        # format-aware readers know whether to use the CSV or Excel path.
+        suffix = normalize_suffix(Path(str(original_filename)).suffix)
+        stored_filename = f"{stem}_{timestamp}_{dataset_id}{suffix}"
         stored_path = self.storage_dir / stored_filename
 
         self._write_source(source, stored_path)
@@ -155,13 +161,11 @@ class DatasetRegistry:
 
     @staticmethod
     def _count_rows_and_columns(csv_path):
-        import pandas as pd
-
         try:
-            frame = pd.read_csv(csv_path)
+            frame = read_table(csv_path)
         except pd.errors.EmptyDataError:
             return 0, 0
-        except (pd.errors.ParserError, UnicodeDecodeError, OSError):
+        except (UnreadableFileError, OSError):
             # The file was already persisted to disk by this point, so
             # registration must still succeed and the dataset must still
             # show up in history -- otherwise this would crash the whole

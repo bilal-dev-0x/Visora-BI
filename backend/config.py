@@ -89,9 +89,10 @@ AI_CONTEXT_LIMIT_MB = _get_int_setting("VISORA_AI_CONTEXT_LIMIT_MB", 100)
 MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 AI_CONTEXT_LIMIT_BYTES = AI_CONTEXT_LIMIT_MB * 1024 * 1024
 
-# Formats VISORA officially ingests this milestone. Excel/JSON/Parquet/
-# PDF/image ingestion is explicitly out of scope for this milestone.
-SUPPORTED_UPLOAD_EXTENSIONS = ("csv",)
+# Formats VISORA officially ingests this milestone: CSV plus Excel
+# workbooks (.xlsx/.xlsm, read via openpyxl). JSON/Parquet/PDF/image
+# ingestion remains explicitly out of scope for this milestone.
+SUPPORTED_UPLOAD_EXTENSIONS = ("csv", "xlsx", "xlsm")
 
 # Network timeout for a single AI provider call, in seconds. A slow
 # provider should not hang the dashboard indefinitely -- this is what

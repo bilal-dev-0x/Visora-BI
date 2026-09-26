@@ -1,12 +1,16 @@
 """
-CSV -> SQLite dataset ingestion.
+CSV/Excel -> SQLite dataset ingestion.
 
-Takes a persisted CSV file (already registered by DatasetRegistry) and
+Takes a persisted upload file (already registered by DatasetRegistry) and
 loads it into its own SQLite table, named after the dataset_id
 (ds_<uuid hex>), so the analytical engines have a concrete table to
 query. This is intentionally independent of DataAnalyzer: DataAnalyzer
 stays the structural/data-quality layer, this module is the
 persistence layer that feeds the analytical engines (Checkpoint 3).
+
+Reading the source file goes through backend/readers.py, which dispatches
+on the stored file's extension -- this module never hardcodes a reader,
+so every supported format follows the exact same type-handling path.
 
 Type handling:
     * integer / float columns keep their pandas dtype -> INTEGER / REAL,
@@ -31,6 +35,7 @@ import threading
 import numpy as np
 import pandas as pd
 
+from backend.readers import UnreadableFileError, read_table
 from backend.sql_safety import quote_identifier, safe_table_name
 
 _DATE_LIKE_SUCCESS_RATIO = 0.9
@@ -159,13 +164,14 @@ class DatasetIngestor:
         return self.conn
 
     def ingest_csv(self, csv_path, table_name):
-        """Load csv_path into table_name, replacing any existing content
-        of that table. Never raises on an empty/header-only/malformed
-        CSV -- returns a result dict describing what happened instead."""
+        """Load csv_path (CSV or Excel, dispatched by its extension)
+        into table_name, replacing any existing content of that table.
+        Never raises on an empty/header-only/malformed upload -- returns
+        a result dict describing what happened instead."""
         table_name = safe_table_name(table_name)
 
         try:
-            raw = pd.read_csv(csv_path)
+            raw = read_table(csv_path)
         except pd.errors.EmptyDataError:
             return {
                 "ingested": False,
@@ -173,15 +179,15 @@ class DatasetIngestor:
                 "row_count": 0,
                 "column_count": 0,
             }
-        except (pd.errors.ParserError, UnicodeDecodeError):
-            # Covers content that isn't actually CSV -- e.g. a binary
-            # file (xlsx/pdf/image/...) saved or renamed with a .csv
-            # extension. VISORA officially supports CSV only this
-            # milestone; this is that rejection happening cleanly
-            # instead of the upload crashing the app.
+        except UnreadableFileError as exc:
+            # Content that isn't actually a readable table -- e.g. a
+            # binary file (pdf/image/...) saved or renamed with a .csv
+            # extension, or a corrupt workbook. Rejected cleanly instead
+            # of the upload crashing the app; the message is already
+            # user-facing.
             return {
                 "ingested": False,
-                "reason": "The file could not be read as CSV. VISORA currently supports CSV files only.",
+                "reason": str(exc),
                 "row_count": 0,
                 "column_count": 0,
             }

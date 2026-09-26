@@ -4,6 +4,8 @@ from datetime import date
 import datetime
 import pandas as pd
 
+from backend.readers import read_table
+
 REPORT_FILE = "reports/sales_summary.json"
 TEXT_FILE = "reports/"
 
@@ -24,7 +26,9 @@ class DataAnalyzer:
         self.cleaned_df = None
 
     def load_data(self):
-        self.df = pd.read_csv(self.data_file)
+        # Dispatch on the stored file's extension (CSV vs Excel) via the
+        # shared backend reader -- never a hardcoded CSV-only parse.
+        self.df = read_table(self.data_file)
         if "Order Date" in self.df.columns:
             self.df["Order Date"] = pd.to_datetime(self.df["Order Date"])
 
