@@ -37,3 +37,10 @@ reports/*.json
 Thumbs.db
 .vscode/
 .idea/
+
+# React / Node (web/)
+web/node_modules/
+web/dist/
+web/.vite/
+web/.smoke/
+*.tsbuildinfo
